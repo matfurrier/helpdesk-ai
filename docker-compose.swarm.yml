@@ -1,0 +1,158 @@
+# Docker Swarm stack — Hetzner infra
+#
+# Prerequisites (one-time, run on infra_postgres before first deploy):
+#   CREATE ROLE helpdesk_app WITH LOGIN PASSWORD '<secret>';
+#   CREATE DATABASE helpdesk OWNER helpdesk_app;
+#   \c helpdesk
+#   CREATE EXTENSION vector;
+#   CREATE EXTENSION pgcrypto;
+#
+# Migration (run before each deploy that changes the schema):
+#   IMAGE=helpdesk-backend:prod DATABASE_URL=postgresql+asyncpg://helpdesk_app:<pwd>@tasks.infra_postgres:5432/helpdesk \
+#     make migrate-prod
+#
+# Deploy:
+#   docker stack deploy -c docker-compose.swarm.yml helpdesk
+
+x-backend-env: &backend-env
+  DATABASE_URL: "${DATABASE_URL}"
+  SECURITY_DB_HOST: "${SECURITY_DB_HOST}"
+  SECURITY_DB_PORT: "${SECURITY_DB_PORT:-5432}"
+  SECURITY_DB_USER: "${SECURITY_DB_USER}"
+  SECURITY_DB_PASSWORD: "${SECURITY_DB_PASSWORD}"
+  SECURITY_DB_NAME: "${SECURITY_DB_NAME}"
+  SECURITY_SCHEMA: "public"
+  REDIS_URL: "redis://redis:6379/0"
+  MINIO_ENDPOINT: "minio:9000"
+  MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY}"
+  MINIO_SECRET_KEY: "${MINIO_SECRET_KEY}"
+  MINIO_BUCKET: "${MINIO_BUCKET:-helpdesk-attachments}"
+  CLAMAV_HOST: "clamav"
+  CLAMAV_PORT: "3310"
+  OPENAI_API_KEY: "${OPENAI_API_KEY}"
+  OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o-mini}"
+  OPENAI_EMBED_MODEL: "${OPENAI_EMBED_MODEL:-text-embedding-3-small}"
+  ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+  ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}"
+  AI_FALLBACK_ENABLED: "${AI_FALLBACK_ENABLED:-true}"
+  SECRET_KEY: "${SECRET_KEY}"
+  BOOTSTRAP_ADMIN_UUIDS: "${BOOTSTRAP_ADMIN_UUIDS:-}"
+  IT_DEPARTMENT_ID: "${IT_DEPARTMENT_ID:-1}"
+  SESSION_COOKIE_NAME: "__Host-sds_session"
+  ENV: "production"
+  LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+
+services:
+
+  # ── Backend ─────────────────────────────────────────────────────────────────
+  backend:
+    image: helpdesk-backend:prod
+    environment:
+      <<: *backend-env
+    networks:
+      - helpdesk_net
+      - data          # reaches tasks.infra_postgres (helpdesk DB + security DB)
+      - intranet_net
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first    # ensures migration ran before old replicas stop
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+  frontend:
+    image: helpdesk-frontend:prod
+    environment:
+      PORT: "3004"
+      NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-http://localhost:8004}"
+      INTERNAL_API_URL: "http://backend:8004"
+    ports:
+      - "8081:3004"
+    networks:
+      - helpdesk_net
+      - intranet_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+
+  # ── Redis ─────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - helpdesk_redis:/data
+    networks:
+      - helpdesk_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 256M
+
+  # ── MinIO ─────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9101"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ACCESS_KEY}"
+      MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY}"
+    volumes:
+      - helpdesk_minio:/data
+    networks:
+      - helpdesk_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.role == manager    # single-node MinIO needs stable placement
+      resources:
+        limits:
+          memory: 512M
+
+  # ── ClamAV ────────────────────────────────────────────────────────────────
+  clamav:
+    image: clamav/clamav:latest
+    networks:
+      - helpdesk_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 1G     # ClamAV signature DB is large
+        reservations:
+          memory: 512M
+
+networks:
+  helpdesk_net:
+    driver: overlay
+    attachable: true    # allows `docker run --network helpdesk_helpdesk_net` for one-off tasks
+  data:
+    external: true      # shared Swarm overlay — reaches tasks.infra_postgres
+  intranet_net:
+    external: true
+
+volumes:
+  helpdesk_redis:
+  helpdesk_minio:

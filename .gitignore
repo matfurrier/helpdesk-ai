@@ -1,0 +1,34 @@
+# Secrets — never commit
+.env
+*.env.local
+*.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+dist/
+
+# Node
+node_modules/
+.next/
+.pnpm-store/
+pnpm-lock.yaml
+
+# Docker volumes
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

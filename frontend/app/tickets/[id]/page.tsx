@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { buildApiUrl } from "@/lib/api";
+import { TicketActions } from "@/components/tickets/ticket-actions";
 
 interface TicketOut {
   id: string;
@@ -12,6 +13,7 @@ interface TicketOut {
   priority: string;
   category_id: string | null;
   requester_id: string;
+  assignee_id: string | null;
   conversation_id: string | null;
   tags: string[];
   created_at: string;
@@ -19,50 +21,61 @@ interface TicketOut {
   transcript: string | null;
 }
 
-async function getTicket(id: string): Promise<TicketOut | null> {
-  const cookieStore = await cookies();
-  const session =
-    cookieStore.get("sds_session") ?? cookieStore.get("__Host-sds_session");
-  if (!session) return null;
+interface TicketMessageOut {
+  id: string;
+  author_id: string;
+  author_role: string;
+  visibility: string;
+  body: string;
+  created_at: string;
+}
 
-  const res = await fetch(buildApiUrl(`/api/v1/tickets/${id}`), {
-    headers: { Cookie: `${session.name}=${session.value}` },
-    cache: "no-store",
-  });
+interface UserOut {
+  user_id: string;
+  name: string;
+  email: string;
+  role: string;
+}
 
-  if (res.status === 404 || res.status === 403) return null;
-  if (!res.ok) throw new Error(`Erro ao carregar chamado: ${res.status}`);
-  return res.json() as Promise<TicketOut>;
+const IT_ROLES = new Set(["it_agent", "it_lead", "it_admin"]);
+
+async function serverFetch<T>(path: string, session: { name: string; value: string }): Promise<T | null> {
+  try {
+    const res = await fetch(buildApiUrl(path), {
+      headers: { Cookie: `${session.name}=${session.value}` },
+      cache: "no-store",
+    });
+    if (res.status === 404 || res.status === 403) return null;
+    if (!res.ok) throw new Error(`${res.status}`);
+    return res.json() as Promise<T>;
+  } catch {
+    return null;
+  }
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  NEW: "Novo",
-  OPEN: "Aberto",
-  PENDING: "Pendente",
-  RESOLVED: "Resolvido",
-  CLOSED: "Fechado",
+  NEW: "Novo", TRIAGE: "Triagem", IN_PROGRESS: "Em andamento",
+  WAITING_USER: "Aguardando usuário", RESOLVED: "Resolvido",
+  CLOSED: "Fechado", AUTO_RESOLVED: "Resolvido auto",
+  CANCELLED: "Cancelado", REOPENED: "Reaberto",
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  NEW: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  OPEN: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
-  PENDING: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  RESOLVED: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  CLOSED: "bg-muted text-muted-foreground",
-};
-
-const PRIORITY_LABEL: Record<string, string> = {
-  low: "Baixa",
-  normal: "Normal",
-  high: "Alta",
-  urgent: "Urgente",
+  NEW:          "bg-blue-100 text-blue-800",
+  TRIAGE:       "bg-purple-100 text-purple-800",
+  IN_PROGRESS:  "bg-yellow-100 text-yellow-800",
+  WAITING_USER: "bg-orange-100 text-orange-800",
+  RESOLVED:     "bg-green-100 text-green-800",
+  CLOSED:       "bg-muted text-muted-foreground",
+  CANCELLED:    "bg-muted text-muted-foreground",
+  REOPENED:     "bg-red-100 text-red-800",
 };
 
 const PRIORITY_COLOR: Record<string, string> = {
-  low: "bg-muted text-muted-foreground",
-  normal: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-  high: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  urgent: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+  low:    "bg-muted text-muted-foreground",
+  normal: "bg-blue-100 text-blue-800",
+  high:   "bg-orange-100 text-orange-800",
+  urgent: "bg-red-100 text-red-800",
 };
 
 export default async function TicketPage({
@@ -71,12 +84,26 @@ export default async function TicketPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const ticket = await getTicket(id);
 
-  if (!ticket) notFound();
+  const cookieStore = await cookies();
+  const session =
+    cookieStore.get("sds_session") ?? cookieStore.get("__Host-sds_session");
+  if (!session) notFound();
 
+  const [ticket, user, messages] = await Promise.all([
+    serverFetch<TicketOut>(`/api/v1/tickets/${id}`, session),
+    serverFetch<UserOut>("/api/v1/auth/me", session),
+    serverFetch<TicketMessageOut[]>(`/api/v1/tickets/${id}/messages`, session),
+  ]);
+
+  if (!ticket || !user) notFound();
+
+  const isAgent = IT_ROLES.has(user.role);
   const createdAt = new Date(ticket.created_at).toLocaleString("pt-BR");
   const updatedAt = new Date(ticket.updated_at).toLocaleString("pt-BR");
+
+  // Filter out the system transcript message from the thread view
+  const threadMessages = (messages ?? []).filter((m) => m.author_role !== "system");
 
   return (
     <main className="min-h-screen bg-muted/20 p-6 md:p-8">
@@ -88,15 +115,14 @@ export default async function TicketPage({
           ← Dashboard
         </a>
 
+        {/* Ticket header */}
         <div className="rounded-xl border bg-card p-6 shadow-sm space-y-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground font-mono">
                 {ticket.ticket_number}
               </p>
-              <h1 className="text-xl font-semibold mt-1 leading-snug">
-                {ticket.title}
-              </h1>
+              <h1 className="text-xl font-semibold mt-1 leading-snug">{ticket.title}</h1>
             </div>
             <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
               <span
@@ -108,11 +134,10 @@ export default async function TicketPage({
               </span>
               <span
                 className={`text-xs px-2 py-1 rounded-full font-medium ${
-                  PRIORITY_COLOR[ticket.priority] ??
-                  "bg-muted text-muted-foreground"
+                  PRIORITY_COLOR[ticket.priority] ?? "bg-muted text-muted-foreground"
                 }`}
               >
-                {PRIORITY_LABEL[ticket.priority] ?? ticket.priority}
+                {ticket.priority}
               </span>
             </div>
           </div>
@@ -127,10 +152,7 @@ export default async function TicketPage({
           {ticket.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {ticket.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="text-xs bg-muted px-2 py-0.5 rounded-full"
-                >
+                <span key={tag} className="text-xs bg-muted px-2 py-0.5 rounded-full">
                   {tag}
                 </span>
               ))}
@@ -140,13 +162,39 @@ export default async function TicketPage({
           <div className="flex flex-wrap gap-6 text-xs text-muted-foreground border-t pt-4">
             <span>Criado em {createdAt}</span>
             <span>Atualizado em {updatedAt}</span>
+            {isAgent && ticket.assignee_id && (
+              <span>Responsável: <code className="font-mono">{ticket.assignee_id.slice(0, 8)}…</code></span>
+            )}
           </div>
         </div>
 
-        {ticket.transcript && (
+        {/* Interactive panel (client component) */}
+        <TicketActions
+          ticketId={ticket.id}
+          currentStatus={ticket.status}
+          assigneeId={ticket.assignee_id}
+          currentUserId={user.user_id}
+          isAgent={isAgent}
+          initialMessages={threadMessages}
+        />
+
+        {/* Transcript (collapsible, IT only) */}
+        {isAgent && ticket.transcript && (
+          <details className="rounded-xl border bg-card shadow-sm">
+            <summary className="px-5 py-4 text-xs font-medium text-muted-foreground uppercase tracking-wide cursor-pointer select-none">
+              Transcrição do chat IA
+            </summary>
+            <pre className="px-5 pb-5 text-xs whitespace-pre-wrap font-mono leading-relaxed text-muted-foreground">
+              {ticket.transcript}
+            </pre>
+          </details>
+        )}
+
+        {/* Show transcript to requester too */}
+        {!isAgent && ticket.transcript && (
           <div className="rounded-xl border bg-card p-6 shadow-sm">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-              Transcrição do chat
+              Histórico do chat
             </p>
             <pre className="text-xs whitespace-pre-wrap font-mono leading-relaxed text-muted-foreground">
               {ticket.transcript}

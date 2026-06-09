@@ -81,6 +81,7 @@ class TicketListOut(BaseModel):
 class TicketStatsOut(BaseModel):
     model_config = ConfigDict(strict=True)
 
+    total_count: int = 0
     open_count: int
     pending_count: int
     resolved_today: int
@@ -144,3 +145,25 @@ class RoleGrantCreate(BaseModel):
     model_config = ConfigDict(strict=True)
 
     role: Literal["it_admin", "it_lead"]
+
+
+class FilterUser(BaseModel):
+    model_config = ConfigDict(strict=False)
+
+    id: str
+    name: str
+
+
+class FilterDept(BaseModel):
+    model_config = ConfigDict(strict=False)
+
+    id: int
+    name: str
+
+
+class FilterOptionsOut(BaseModel):
+    model_config = ConfigDict(strict=False)
+
+    years: list[int]
+    departments: list[FilterDept]
+    users: list[FilterUser]

@@ -1,10 +1,17 @@
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { buildApiUrl } from "@/lib/api";
+import { FilterBar } from "@/components/tickets/filter-bar";
 
 interface UserOut { user_id: string; name: string; email: string; role: string; }
-interface TicketStatsOut { open_count: number; pending_count: number; resolved_today: number; unassigned_count: number; avg_first_response_minutes: number | null; }
+interface TicketStatsOut { total_count: number; open_count: number; pending_count: number; resolved_today: number; unassigned_count: number; avg_first_response_minutes: number | null; }
 interface TicketListItem { id: string; number: number; ticket_number: string; title: string; status: string; priority: string; requester_id: string; assignee_id: string | null; tags: string[]; created_at: string; updated_at: string; }
 interface TicketListOut { items: TicketListItem[]; total: number; }
+interface FilterOptionsOut {
+  years: number[];
+  departments: { id: number; name: string }[];
+  users: { id: string; name: string }[];
+}
 
 const IT_ROLES = new Set(["it_agent", "it_lead", "it_admin"]);
 
@@ -20,6 +27,16 @@ async function serverFetch<T>(path: string, session: { name: string; value: stri
     if (!res.ok) return null;
     return res.json() as Promise<T>;
   } catch { return null; }
+}
+
+function buildFilterQuery(sp: Record<string, string | string[] | undefined>) {
+  const p = new URLSearchParams();
+  if (sp.year) p.set("year", String(sp.year));
+  if (sp.month) p.set("month", String(sp.month));
+  if (sp.dept_id) p.set("dept_id", String(sp.dept_id));
+  if (sp.user_id) p.set("user_id", String(sp.user_id));
+  const qs = p.toString();
+  return qs ? `?${qs}` : "";
 }
 
 // Status/priority badge maps
@@ -73,7 +90,15 @@ function EmployeeDashboard({ user }: { user: UserOut }) {
 }
 
 // IT dashboard
-function ItDashboard({ stats, queue }: { stats: TicketStatsOut | null; queue: TicketListOut | null }) {
+function ItDashboard({
+  stats,
+  queue,
+  filterOptions,
+}: {
+  stats: TicketStatsOut | null;
+  queue: TicketListOut | null;
+  filterOptions: FilterOptionsOut | null;
+}) {
   const avgFRT = stats?.avg_first_response_minutes
     ? stats.avg_first_response_minutes < 60
       ? `${Math.round(stats.avg_first_response_minutes)} min`
@@ -82,6 +107,13 @@ function ItDashboard({ stats, queue }: { stats: TicketStatsOut | null; queue: Ti
 
   return (
     <div className="p-5 space-y-5">
+      {/* Filter bar */}
+      {filterOptions && (
+        <Suspense fallback={null}>
+          <FilterBar options={filterOptions} />
+        </Suspense>
+      )}
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard label="Abertos" value={stats?.open_count ?? "—"} />
@@ -163,7 +195,12 @@ function ItDashboard({ stats, queue }: { stats: TicketStatsOut | null; queue: Ti
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
   const cookieStore = await cookies();
   const session = cookieStore.get("sds_session") ?? cookieStore.get("__Host-sds_session");
   if (!session) return null;
@@ -175,10 +212,14 @@ export default async function DashboardPage() {
     return <EmployeeDashboard user={user} />;
   }
 
-  const [stats, queue] = await Promise.all([
-    serverFetch<TicketStatsOut>("/api/v1/tickets/stats", session),
-    serverFetch<TicketListOut>("/api/v1/tickets/?limit=30", session),
+  const fq = buildFilterQuery(sp);
+  const ticketsUrl = fq ? `/api/v1/tickets/${fq}&limit=30` : "/api/v1/tickets/?limit=30";
+
+  const [stats, queue, filterOptions] = await Promise.all([
+    serverFetch<TicketStatsOut>(`/api/v1/tickets/stats${fq}`, session),
+    serverFetch<TicketListOut>(ticketsUrl, session),
+    serverFetch<FilterOptionsOut>("/api/v1/tickets/filter-options", session),
   ]);
 
-  return <ItDashboard stats={stats} queue={queue} />;
+  return <ItDashboard stats={stats} queue={queue} filterOptions={filterOptions} />;
 }

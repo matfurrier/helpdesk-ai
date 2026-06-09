@@ -131,22 +131,22 @@ export default function NewChatPage() {
       lastResult?.next_action === "escalate_human");
 
   return (
-    <main className="flex flex-col h-screen bg-background">
-      <header className="border-b px-4 py-3 flex items-center gap-3">
-        <a href="/dashboard" className="text-sm text-muted-foreground hover:underline">
+    <main className="flex flex-col h-screen bg-zinc-950">
+      <header className="border-b border-zinc-800 px-4 py-3 flex items-center gap-3 bg-zinc-950">
+        <a href="/dashboard" className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
           ← Dashboard
         </a>
-        <h1 className="text-base font-semibold">Suporte de TI</h1>
+        <h1 className="text-base font-semibold text-zinc-100">Suporte de TI</h1>
         {conversationId && (
-          <span className="text-xs text-muted-foreground ml-auto">
+          <span className="text-xs text-zinc-600 ml-auto font-mono">
             #{conversationId.slice(0, 8)}
           </span>
         )}
       </header>
 
-      <section className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <section className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-zinc-900">
         {messages.length === 0 && !loading && (
-          <p className="text-center text-sm text-muted-foreground mt-12">
+          <p className="text-center text-sm text-zinc-400 mt-12">
             Descreva seu problema de TI e pressione Enter.
           </p>
         )}
@@ -157,10 +157,10 @@ export default function NewChatPage() {
             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[80%] rounded-lg px-4 py-2 text-sm whitespace-pre-wrap ${
+              className={`max-w-[80%] rounded-lg px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
                 msg.role === "user"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-foreground"
+                  ? "bg-blue-600 text-white"
+                  : "bg-zinc-800 text-zinc-200 border border-zinc-700/50"
               }`}
             >
               {msg.content}
@@ -170,9 +170,9 @@ export default function NewChatPage() {
 
         {streamingText && (
           <div className="flex justify-start">
-            <div className="max-w-[80%] rounded-lg px-4 py-2 text-sm bg-muted text-foreground whitespace-pre-wrap">
+            <div className="max-w-[80%] rounded-lg px-4 py-2.5 text-sm bg-zinc-800 text-zinc-200 border border-zinc-700/50 whitespace-pre-wrap leading-relaxed">
               {streamingText}
-              <span className="animate-pulse">▍</span>
+              <span className="animate-pulse text-zinc-400">▍</span>
             </div>
           </div>
         )}
@@ -182,8 +182,8 @@ export default function NewChatPage() {
             <button
               onClick={() => void handleConvert()}
               disabled={converting}
-              className="text-sm px-4 py-2 rounded-md bg-primary text-primary-foreground
-                         hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="text-sm px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white
+                         transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {converting ? "Abrindo chamado…" : "Abrir chamado"}
             </button>
@@ -192,13 +192,13 @@ export default function NewChatPage() {
 
         {ticket && (
           <div className="flex justify-center pt-2">
-            <div className="rounded-md border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-center">
-              <p className="font-medium text-green-700 dark:text-green-400">
+            <div className="rounded-lg border border-green-500/30 bg-green-500/10 px-5 py-3 text-sm text-center">
+              <p className="font-medium text-green-400">
                 Chamado criado: <strong>{ticket.ticket_number}</strong>
               </p>
               <a
                 href={`/tickets/${ticket.ticket_id}`}
-                className="text-xs text-muted-foreground hover:underline mt-1 block"
+                className="text-xs text-zinc-400 hover:text-zinc-200 mt-1 block transition-colors"
               >
                 Ver chamado →
               </a>
@@ -207,7 +207,7 @@ export default function NewChatPage() {
         )}
 
         {error && (
-          <div className="rounded-md bg-destructive/10 text-destructive text-sm px-4 py-2">
+          <div className="rounded-md bg-red-900/20 border border-red-800/30 text-red-400 text-sm px-4 py-2">
             {error}
           </div>
         )}
@@ -215,11 +215,12 @@ export default function NewChatPage() {
         <div ref={bottomRef} />
       </section>
 
-      <footer className="border-t px-4 py-3">
+      <footer className="border-t border-zinc-800 px-4 py-3 bg-zinc-950">
         <div className="flex gap-2 items-end">
           <textarea
-            className="flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm
-                       focus:outline-none focus:ring-2 focus:ring-ring min-h-[2.5rem] max-h-40"
+            className="flex-1 resize-none rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm
+                       text-zinc-100 placeholder:text-zinc-500
+                       focus:outline-none focus:ring-1 focus:ring-blue-500/50 min-h-[2.5rem] max-h-40"
             placeholder={conversationId ? "Digite sua mensagem..." : "Carregando..."}
             value={input}
             disabled={!conversationId || loading || !!ticket}
@@ -230,13 +231,13 @@ export default function NewChatPage() {
           <button
             onClick={() => void handleSend()}
             disabled={!conversationId || loading || !input.trim() || !!ticket}
-            className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm
-                       hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm
+                       transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {loading ? "..." : "Enviar"}
           </button>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
+        <p className="text-xs text-zinc-600 mt-1">
           Enter para enviar · Shift+Enter para nova linha
         </p>
       </footer>

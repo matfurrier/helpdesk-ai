@@ -71,34 +71,149 @@ def _is_agent(user: UserOut) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# GET /tickets/filter-options — filter metadata (IT only, before /stats)
+# ---------------------------------------------------------------------------
+
+@router.get("/filter-options")
+async def get_filter_options(
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
+) -> dict[str, object]:
+    if not _is_agent(current_user):
+        raise ForbiddenError("Acesso restrito à equipe de TI")
+
+    # Anos presentes nos tickets
+    years_r = await db.execute(
+        text(
+            "SELECT DISTINCT EXTRACT(YEAR FROM created_at)::int AS y "  # noqa: S608
+            "FROM helpdesk.tickets ORDER BY y DESC"
+        )
+    )
+    years = [int(r.y) for r in years_r.fetchall()]
+
+    # Todos os requester UUIDs distintos
+    uuids_r = await db.execute(
+        text("SELECT DISTINCT requester_id::text AS uid FROM helpdesk.tickets")  # noqa: S608
+    )
+    uuids = [r.uid for r in uuids_r.fetchall()]
+
+    departments: dict[int, str] = {}
+    users: list[dict[str, object]] = []
+    if uuids:
+        try:
+            sec_r = await sec_db.execute(
+                text(
+                    "SELECT uuid::text, name, departmentid, departmentname "  # noqa: S608
+                    "FROM public.users WHERE uuid = ANY(:uuids)"
+                ),
+                {"uuids": uuids},
+            )
+            for u in sec_r.fetchall():
+                users.append({"id": str(u.uuid), "name": str(u.name or u.uuid)})
+                if u.departmentid is not None:
+                    departments[int(u.departmentid)] = str(
+                        u.departmentname or f"Dept {u.departmentid}"
+                    )
+        except Exception:  # noqa: BLE001
+            pass
+
+    from app.schemas.tickets import FilterDept, FilterOptionsOut, FilterUser  # local import
+
+    return FilterOptionsOut(
+        years=years,
+        departments=sorted(
+            [FilterDept(id=k, name=v) for k, v in departments.items()],
+            key=lambda d: d.name,
+        ),
+        users=sorted(
+            [FilterUser(id=u["id"], name=str(u["name"])) for u in users],
+            key=lambda u: u.name,
+        ),
+    ).model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Helper — resolve dept UUIDs via security DB
+# ---------------------------------------------------------------------------
+
+async def _resolve_dept_uuids(dept_id: int, sec_db: AsyncSession) -> list[str]:
+    """Retorna todos os UUIDs de usuários de um departamento (security DB)."""
+    try:
+        r = await sec_db.execute(
+            text("SELECT uuid::text FROM public.users WHERE departmentid = :dept"),  # noqa: S608
+            {"dept": dept_id},
+        )
+        return [row.uuid for row in r.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+# ---------------------------------------------------------------------------
 # GET /tickets/stats — KPIs (IT only, must be before /{ticket_id})
 # ---------------------------------------------------------------------------
 
 @router.get("/stats", response_model=TicketStatsOut)
 async def get_ticket_stats(
+    year: Annotated[int | None, Query()] = None,
+    month: Annotated[int | None, Query()] = None,
+    dept_id: Annotated[int | None, Query()] = None,
+    user_id: Annotated[str | None, Query()] = None,
     current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
 ) -> TicketStatsOut:
     if not _is_agent(current_user):
         raise ForbiddenError("Acesso restrito à equipe de TI")
 
+    conditions = ["1=1"]
+    params: dict[str, object] = {}
+
+    if year:
+        conditions.append("EXTRACT(YEAR FROM created_at) = :year")
+        params["year"] = year
+    if month:
+        conditions.append("EXTRACT(MONTH FROM created_at) = :month")
+        params["month"] = month
+    if user_id:
+        conditions.append("requester_id = CAST(:uid AS uuid)")
+        params["uid"] = user_id
+    if dept_id:
+        dept_uuids = await _resolve_dept_uuids(dept_id, sec_db)
+        if not dept_uuids:
+            return TicketStatsOut(
+                total_count=0,
+                open_count=0,
+                pending_count=0,
+                resolved_today=0,
+                unassigned_count=0,
+                avg_first_response_minutes=None,
+            )
+        conditions.append("requester_id = ANY(:dept_uuids)")
+        params["dept_uuids"] = dept_uuids
+
+    where = " AND ".join(conditions)
+    params["active"] = list(_ACTIVE_STATUSES)
+
     row = await db.execute(
         text(
-            "SELECT "
-            "  COUNT(*) FILTER (WHERE status = ANY(:active)) AS open_count, "
-            "  COUNT(*) FILTER (WHERE status = 'WAITING_USER') AS pending_count, "
-            "  COUNT(*) FILTER (WHERE status IN ('RESOLVED','AUTO_RESOLVED') "
-            "    AND resolved_at >= CURRENT_DATE) AS resolved_today, "
-            "  COUNT(*) FILTER (WHERE assignee_id IS NULL "
-            "    AND status = ANY(:active)) AS unassigned_count, "
-            "  AVG(EXTRACT(EPOCH FROM (first_response_at - created_at)) / 60.0) "
-            "    FILTER (WHERE first_response_at IS NOT NULL) AS avg_first_response_minutes "
-            "FROM helpdesk.tickets"  # noqa: S608
+            f"SELECT "  # noqa: S608
+            f"  COUNT(*) AS total_count, "
+            f"  COUNT(*) FILTER (WHERE status = ANY(:active)) AS open_count, "
+            f"  COUNT(*) FILTER (WHERE status = 'WAITING_USER') AS pending_count, "
+            f"  COUNT(*) FILTER (WHERE status IN ('RESOLVED','AUTO_RESOLVED') "
+            f"    AND resolved_at >= CURRENT_DATE) AS resolved_today, "
+            f"  COUNT(*) FILTER (WHERE assignee_id IS NULL "
+            f"    AND status = ANY(:active)) AS unassigned_count, "
+            f"  AVG(EXTRACT(EPOCH FROM (first_response_at - created_at)) / 60.0) "
+            f"    FILTER (WHERE first_response_at IS NOT NULL) AS avg_first_response_minutes "
+            f"FROM helpdesk.tickets WHERE {where}"
         ),
-        {"active": list(_ACTIVE_STATUSES)},
+        params,
     )
     r = row.fetchone()
     return TicketStatsOut(
+        total_count=int(r.total_count or 0),
         open_count=int(r.open_count or 0),
         pending_count=int(r.pending_count or 0),
         resolved_today=int(r.resolved_today or 0),
@@ -118,10 +233,15 @@ async def list_tickets(
     status: Annotated[str | None, Query()] = None,
     priority: Annotated[str | None, Query()] = None,
     unassigned: Annotated[bool, Query()] = False,
+    year: Annotated[int | None, Query()] = None,
+    month: Annotated[int | None, Query()] = None,
+    dept_id: Annotated[int | None, Query()] = None,
+    user_id: Annotated[str | None, Query()] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
 ) -> TicketListOut:
     agent = _is_agent(current_user)
     offset = (page - 1) * limit
@@ -144,6 +264,23 @@ async def list_tickets(
     if unassigned and agent:
         conditions.append("assignee_id IS NULL AND status = ANY(:active)")
         params["active"] = list(_ACTIVE_STATUSES)
+
+    if agent:
+        if year:
+            conditions.append("EXTRACT(YEAR FROM created_at) = :year")
+            params["year"] = year
+        if month:
+            conditions.append("EXTRACT(MONTH FROM created_at) = :month")
+            params["month"] = month
+        if user_id:
+            conditions.append("requester_id = CAST(:filter_uid AS uuid)")
+            params["filter_uid"] = user_id
+        if dept_id:
+            dept_uuids = await _resolve_dept_uuids(dept_id, sec_db)
+            if not dept_uuids:
+                return TicketListOut(items=[], total=0)
+            conditions.append("requester_id = ANY(:dept_uuids)")
+            params["dept_uuids"] = dept_uuids
 
     where = " AND ".join(conditions)
 

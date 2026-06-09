@@ -34,13 +34,6 @@ export function Sidebar({ role, userName }: Props) {
     }
   }
 
-  const initials = userName
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
-
   return (
     <aside className="flex flex-col w-[220px] min-w-[220px] h-screen bg-zinc-950 border-r border-zinc-800/60 overflow-hidden">
       {/* Logo */}
@@ -74,14 +67,9 @@ export function Sidebar({ role, userName }: Props) {
 
       {/* User */}
       <div className="px-3 py-3 border-t border-zinc-800/60">
-        <div className="flex items-center gap-2.5 px-2 py-2">
-          <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-200 flex-shrink-0">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-zinc-200 truncate">{userName}</p>
-            <p className="text-[11px] text-zinc-500 truncate">{role}</p>
-          </div>
+        <div className="px-2 py-2">
+          <p className="text-xs font-medium text-zinc-200 truncate">{userName}</p>
+          <p className="text-[11px] text-zinc-500 truncate">{role}</p>
         </div>
         <button
           onClick={() => void handleLogout()}

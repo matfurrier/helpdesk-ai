@@ -1,24 +1,24 @@
 """Resolve the helpdesk role for a user UUID.
 
-Priority chain (Sprint 0):
-  1. BOOTSTRAP_ADMIN_UUIDS (env var) — provisional until role_overrides lands.
-     See ADR-0003. Planned removal: Sprint 2, when helpdesk.role_overrides is
-     implemented.
-  2. departmentid == IT_DEPARTMENT_ID (public.users) → it_agent.
-  3. Default: employee.
-
-Role distinction between it_lead / it_admin is handled only via
-BOOTSTRAP_ADMIN_UUIDS until the helpdesk.role_overrides table arrives.
+Priority chain (Sprint 2):
+  1. BOOTSTRAP_ADMIN_UUIDS (env var) — provisional bootstrap escape hatch.
+     See ADR-0003. Kept for emergency access even after role_overrides lands.
+  2. helpdesk.role_overrides — explicit it_admin / it_lead grants.
+  3. departmentid == IT_DEPARTMENT_ID (public.users) → it_agent.
+  4. Default: employee.
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
 
+import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+
+log = structlog.get_logger()
 
 
 class Role(StrEnum):
@@ -31,16 +31,37 @@ class Role(StrEnum):
 async def resolve_role(user_uuid: str, sec_db: AsyncSession) -> Role:
     """Return the highest helpdesk role for *user_uuid*.
 
-    Why: ADR-0003 — we derive role from departmentid because the shared
-    user directory (public.users in the security database) does not have
-    helpdesk-specific group tables. BOOTSTRAP_ADMIN_UUIDS is a provisional
-    escape hatch for it_admin until helpdesk.role_overrides is built.
+    Checks role_overrides in the helpdesk DB before falling back to the
+    departmentid-based heuristic in the shared user directory.
+    sec_db is accepted for the departmentid lookup; the helpdesk lookup
+    uses a separate session derived from sec_db's engine to reach the
+    helpdesk schema.  In practice both share the same DB in dev, so we
+    reuse sec_db.
     """
-    # Step 1 — bootstrap override (provisional, Sprint 0 only)
+    # Step 1 — bootstrap override (emergency access, always wins)
     if user_uuid.lower() in settings.bootstrap_admin_uuid_set:
         return Role.IT_ADMIN
 
-    # Step 2 — departmentid lookup in the shared user directory
+    # Step 2 — explicit grant in helpdesk.role_overrides
+    try:
+        override_result = await sec_db.execute(
+            text(
+                "SELECT role FROM helpdesk.role_overrides "  # noqa: S608
+                "WHERE user_uuid = :uuid LIMIT 1"
+            ),
+            {"uuid": user_uuid},
+        )
+        override_row = override_result.fetchone()
+        if override_row is not None:
+            role_str = str(override_row.role)
+            if role_str == Role.IT_ADMIN:
+                return Role.IT_ADMIN
+            if role_str == Role.IT_LEAD:
+                return Role.IT_LEAD
+    except Exception as exc:
+        log.debug("role_resolver.overrides_unavailable", error=str(exc))
+
+    # Step 3 — departmentid lookup in the shared user directory
     try:
         result = await sec_db.execute(
             text(

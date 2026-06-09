@@ -1,7 +1,12 @@
+// Server-side (SSR/RSC): call the backend container directly.
+// Client-side (browser): use a relative URL so the request goes to the same
+// origin as the frontend — Next.js rewrites proxy /api/v1/* to the backend.
+// This avoids Chrome's Private Network Access block when the user's browser is
+// on a different host than the server running localhost:8004.
 const API_BASE =
   typeof window === "undefined"
     ? (process.env.INTERNAL_API_URL ?? "http://helpdesk-backend:8004")
-    : (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8004");
+    : "";
 
 export function buildApiUrl(path: string): string {
   return `${API_BASE}${path}`;

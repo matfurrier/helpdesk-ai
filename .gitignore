@@ -20,6 +20,7 @@ node_modules/
 .next/
 .pnpm-store/
 pnpm-lock.yaml
+*.tsbuildinfo
 
 # Docker volumes
 *.log

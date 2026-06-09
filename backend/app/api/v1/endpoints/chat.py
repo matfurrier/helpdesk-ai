@@ -42,6 +42,7 @@ from app.schemas.chat import ConversationOut, MessageCreate, MessageOut, TriageO
 from app.schemas.tickets import ConvertOut, TicketDraftOutput
 from app.services.ai import redactor as _redactor
 from app.services.ai.orchestrator import LLMOrchestrator, get_orchestrator, orchestrator
+from app.services.rag import retriever as _retriever
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 log = structlog.get_logger()
@@ -232,9 +233,13 @@ async def send_message(
     )
     await db.commit()
 
+    rag_chunks = await _retriever.retrieve(body.content, db)
+    context_blocks = _retriever.chunks_to_context_blocks(rag_chunks)
+
     result: TriageOutput = await orch.complete(
         prompt_key="TRIAGE_SYSTEM",
         user_input=body.content,
+        context_blocks=context_blocks or None,
         user_id=current_user.user_id,
         conversation_id=conv_id,
         db=db,

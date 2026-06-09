@@ -29,10 +29,7 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      // Fetch CSRF token before login POST (Issue #10)
-      const csrfRes = await fetch("/api/v1/auth/csrf-token", { credentials: "include" });
-      if (!csrfRes.ok) throw new Error("Falha ao obter CSRF token");
-      const { csrf_token } = await csrfRes.json() as { csrf_token: string };
+      const { csrf_token } = await api.get<{ csrf_token: string }>("/api/v1/auth/csrf-token");
 
       await api.post("/api/v1/auth/login", data, {
         headers: { "X-CSRF-Token": csrf_token },

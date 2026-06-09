@@ -1,4 +1,4 @@
-.PHONY: dev test migrate lint build down frontend-bootstrap
+.PHONY: dev test migrate migrate-swarm migrate-prod lint build down frontend-bootstrap
 
 # Start all services with hot-reload
 dev:
@@ -16,9 +16,27 @@ test-int:
 test-pi:
 	docker exec helpdesk-backend python3 -m pytest -m prompt_injection -v
 
-# Apply Alembic migrations via the running backend container
+# Apply Alembic migrations via the running backend container (dev/local only)
 migrate:
 	docker exec helpdesk-backend alembic upgrade head
+
+# Run migration inside any running Swarm backend replica.
+# The container already has DATABASE_URL pointing to infra_postgres.
+# Usage: make migrate-swarm
+migrate-swarm:
+	@CONTAINER=$$(docker ps -qf name=helpdesk_backend | head -1); \
+	[ -z "$$CONTAINER" ] && echo "ERROR: no running helpdesk_backend container found" && exit 1; \
+	docker exec $$CONTAINER alembic upgrade head
+
+# Run migration as an ephemeral container against prod DB.
+# Requires IMAGE and DATABASE_URL to be set in the calling environment.
+# Usage: IMAGE=helpdesk-backend:prod DATABASE_URL=postgresql+asyncpg://... make migrate-prod
+migrate-prod:
+	docker run --rm \
+	  --network data \
+	  -e DATABASE_URL="$(DATABASE_URL)" \
+	  $(IMAGE) \
+	  alembic upgrade head
 
 # Lint backend
 lint:

@@ -19,6 +19,10 @@ FROM base AS prod
 COPY pyproject.toml .
 RUN pip install .
 COPY app/ ./app/
+# Alembic must be in the image so migration can run as a one-off container
+# before the service goes live (see `make migrate-swarm` / `make migrate-prod`).
+COPY alembic/ ./alembic/
+COPY alembic.ini .
 EXPOSE 8004
 
 RUN addgroup --system app && adduser --system --ingroup app app

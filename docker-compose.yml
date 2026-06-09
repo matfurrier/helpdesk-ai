@@ -1,0 +1,122 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: helpdesk-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5436:5432"
+    volumes:
+      - helpdesk_pgdata:/var/lib/postgresql/data
+      - ./scripts/dev_security_stub.sql:/docker-entrypoint-initdb.d/00_dev_security_stub.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - helpdesk_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: helpdesk-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - helpdesk_net
+
+  minio:
+    image: minio/minio:latest
+    container_name: helpdesk-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    command: server /data --console-address ":9101"
+    ports:
+      - "9100:9000"
+      - "9101:9101"
+    volumes:
+      - helpdesk_minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - helpdesk_net
+
+  clamav:
+    image: clamav/clamav:latest
+    container_name: helpdesk-clamav
+    ports:
+      - "3310:3310"
+    networks:
+      - helpdesk_net
+
+  backend:
+    build:
+      context: ./backend
+      target: dev
+    image: helpdesk-backend:dev
+    container_name: helpdesk-backend
+    ports:
+      - "8004:8004"
+    env_file: .env
+    environment:
+      # 'db' is the Compose service name (avoids collision with the Swarm overlay
+      # network which also exposes a service called 'postgres' at a different IP).
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - ./backend:/app:rw
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8004 --reload
+    init: true
+    networks:
+      - helpdesk_net
+      - data       # reaches tasks.infra_postgres for the security database
+      - intranet_net
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    image: helpdesk-frontend:dev
+    container_name: helpdesk-frontend
+    ports:
+      - "8081:3004"
+    environment:
+      PORT: "3004"
+      NEXT_PUBLIC_API_URL: "http://localhost:8004"
+      INTERNAL_API_URL: "http://helpdesk-backend:8004"
+    volumes:
+      - ./frontend:/app:rw
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - helpdesk_net
+      - intranet_net
+
+networks:
+  helpdesk_net:
+    driver: bridge
+  data:
+    external: true
+  intranet_net:
+    external: true
+
+volumes:
+  helpdesk_pgdata:
+  helpdesk_minio:

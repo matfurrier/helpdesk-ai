@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+from functools import cached_property
+
+from pydantic import computed_field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # --- App ---
+    env: str = "development"
+    log_level: str = "INFO"
+    version: str = "0.1.0"
+
+    # --- Helpdesk Postgres ---
+    database_url: str
+    helpdesk_schema: str = "helpdesk"
+    rag_schema: str = "helpdesk_rag"
+
+    # --- Security / auth Postgres ---
+    security_db_host: str
+    security_db_port: int = 5432
+    security_db_user: str
+    security_db_password: str = ""
+    security_db_name: str
+    security_schema: str = "public"  # schema inside security DB (always 'public')
+
+    # TI department ID in public.department — users with this dept get it_agent role
+    it_department_id: int = 1
+
+    @computed_field  # type: ignore[prop-decorator]
+    @cached_property
+    def security_db_url(self) -> str:
+        return (
+            f"postgresql+asyncpg://{self.security_db_user}:{self.security_db_password}"
+            f"@{self.security_db_host}:{self.security_db_port}/{self.security_db_name}"
+        )
+
+    # --- Session / JWT ---
+    secret_key: str
+    csrf_secret: str = ""
+    session_cookie_name: str = "__Host-sds_session"
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 480  # 8 h
+
+    # --- Redis ---
+    redis_url: str = "redis://redis:6379/0"
+
+    # --- MinIO ---
+    minio_endpoint: str = "minio:9000"
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
+    minio_bucket: str = "helpdesk-attachments"
+    minio_secure: bool = False
+
+    # --- ClamAV ---
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+
+    # --- AI providers ---
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    openai_embed_model: str = "text-embedding-3-small"
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-haiku-4-5-20251001"
+    ai_fallback_enabled: bool = False
+
+    # --- RBAC bootstrap (Sprint 0) — see ADR-0003 ---
+    bootstrap_admin_uuids: str = ""
+
+    @computed_field  # type: ignore[prop-decorator]
+    @cached_property
+    def bootstrap_admin_uuid_set(self) -> frozenset[str]:
+        """Lower-cased UUID set for O(1) membership checks."""
+        if not self.bootstrap_admin_uuids:
+            return frozenset()
+        return frozenset(u.strip().lower() for u in self.bootstrap_admin_uuids.split(",") if u.strip())
+
+    @property
+    def is_dev(self) -> bool:
+        return self.env == "development"
+
+
+settings = Settings()  # type: ignore[call-arg]

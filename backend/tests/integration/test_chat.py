@@ -76,17 +76,20 @@ async def test_csrf_token_endpoint(client: AsyncClient) -> None:
     assert len(body["csrf_token"]) > 0
 
 
-@respx.mock(base_url="https://api.openai.com", assert_all_called=False)
-async def test_create_conversation(mock_router: respx.MockRouter, client: AsyncClient) -> None:
+async def test_create_conversation(
+    respx_mock: respx.MockRouter, authed_client: AsyncClient
+) -> None:
     """POST /chat/conversations creates a conversation."""
-    mock_router.post("/v1/chat/completions").mock(return_value=Response(200, json=_OPENAI_RESP))
+    respx_mock.post("https://api.openai.com/v1/chat/completions").mock(
+        return_value=Response(200, json=_OPENAI_RESP)
+    )
 
     with patch("app.api.v1.endpoints.chat._get_redis") as mock_get_redis:
         mock_redis = MagicMock()
         mock_redis.eval = AsyncMock(return_value=1)
         mock_get_redis.return_value = mock_redis
 
-        resp = await client.post(
+        resp = await authed_client.post(
             "/api/v1/chat/conversations",
             headers=_csrf_headers(),
             cookies=_csrf_cookies(),
@@ -99,10 +102,13 @@ async def test_create_conversation(mock_router: respx.MockRouter, client: AsyncC
     assert data["message_count"] == 0
 
 
-@respx.mock(base_url="https://api.openai.com", assert_all_called=False)
-async def test_send_message_returns_sse(mock_router: respx.MockRouter, client: AsyncClient) -> None:
+async def test_send_message_returns_sse(
+    respx_mock: respx.MockRouter, authed_client: AsyncClient
+) -> None:
     """POST /chat/conversations/{id}/messages returns SSE stream."""
-    mock_router.post("/v1/chat/completions").mock(return_value=Response(200, json=_OPENAI_RESP))
+    respx_mock.post("https://api.openai.com/v1/chat/completions").mock(
+        return_value=Response(200, json=_OPENAI_RESP)
+    )
 
     with patch("app.api.v1.endpoints.chat._get_redis") as mock_get_redis:
         mock_redis = MagicMock()
@@ -110,7 +116,7 @@ async def test_send_message_returns_sse(mock_router: respx.MockRouter, client: A
         mock_get_redis.return_value = mock_redis
 
         # Create conversation first
-        conv_resp = await client.post(
+        conv_resp = await authed_client.post(
             "/api/v1/chat/conversations",
             headers=_csrf_headers(),
             cookies=_csrf_cookies(),
@@ -118,7 +124,7 @@ async def test_send_message_returns_sse(mock_router: respx.MockRouter, client: A
         assert conv_resp.status_code == 201
         conv_id = conv_resp.json()["id"]
 
-        msg_resp = await client.post(
+        msg_resp = await authed_client.post(
             f"/api/v1/chat/conversations/{conv_id}/messages",
             json={"content": "Meu VPN não conecta."},
             headers=_csrf_headers(),
@@ -149,10 +155,11 @@ async def test_send_message_csrf_missing(client: AsyncClient) -> None:
     assert resp.status_code == 403
 
 
-@respx.mock(base_url="https://api.openai.com", assert_all_called=False)
-async def test_rate_limit(mock_router: respx.MockRouter, client: AsyncClient) -> None:
+async def test_rate_limit(respx_mock: respx.MockRouter, authed_client: AsyncClient) -> None:
     """31st request returns 429."""
-    mock_router.post("/v1/chat/completions").mock(return_value=Response(200, json=_OPENAI_RESP))
+    respx_mock.post("https://api.openai.com/v1/chat/completions").mock(
+        return_value=Response(200, json=_OPENAI_RESP)
+    )
 
     call_count = 0
 
@@ -170,7 +177,7 @@ async def test_rate_limit(mock_router: respx.MockRouter, client: AsyncClient) ->
         # For speed, skip straight to count > 30
         call_count = 30
 
-        resp = await client.post(
+        resp = await authed_client.post(
             "/api/v1/chat/conversations",
             headers=_csrf_headers(),
             cookies=_csrf_cookies(),
@@ -178,26 +185,27 @@ async def test_rate_limit(mock_router: respx.MockRouter, client: AsyncClient) ->
         assert resp.status_code == 429
 
 
-@respx.mock(base_url="https://api.openai.com", assert_all_called=False)
 async def test_pii_not_stored_in_content(
-    mock_router: respx.MockRouter, client: AsyncClient
+    respx_mock: respx.MockRouter, authed_client: AsyncClient
 ) -> None:
     """User message stored with PII replaced by tokens (LGPD compliance)."""
-    mock_router.post("/v1/chat/completions").mock(return_value=Response(200, json=_OPENAI_RESP))
+    respx_mock.post("https://api.openai.com/v1/chat/completions").mock(
+        return_value=Response(200, json=_OPENAI_RESP)
+    )
 
     with patch("app.api.v1.endpoints.chat._get_redis") as mock_get_redis:
         mock_redis = MagicMock()
         mock_redis.eval = AsyncMock(return_value=1)
         mock_get_redis.return_value = mock_redis
 
-        conv_resp = await client.post(
+        conv_resp = await authed_client.post(
             "/api/v1/chat/conversations",
             headers=_csrf_headers(),
             cookies=_csrf_cookies(),
         )
         conv_id = conv_resp.json()["id"]
 
-        await client.post(
+        await authed_client.post(
             f"/api/v1/chat/conversations/{conv_id}/messages",
             json={"content": "Meu CPF é 111.444.777-35, preciso de ajuda com VPN."},
             headers=_csrf_headers(),
@@ -205,7 +213,7 @@ async def test_pii_not_stored_in_content(
         )
 
         # Retrieve messages
-        msgs_resp = await client.get(
+        msgs_resp = await authed_client.get(
             f"/api/v1/chat/conversations/{conv_id}/messages",
             cookies=_csrf_cookies(),
         )

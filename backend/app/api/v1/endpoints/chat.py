@@ -75,6 +75,12 @@ async def _check_csrf(request: Request) -> None:
         raise ForbiddenError("CSRF token inválido ou ausente")
 
 
+async def _csrf_then_user(request: Request, response: Response) -> UserOut:
+    """Run CSRF check before auth — guarantees CSRF returns 403 even when unauthenticated."""
+    await _check_csrf(request)
+    return await get_current_user(request, response)
+
+
 async def _check_rate_limit(user_id: str, redis: Redis) -> None:
     key = f"rl:chat:{user_id}"
     now = time.time()
@@ -135,10 +141,9 @@ async def get_csrf_token(response: Response) -> dict[str, str]:
 @router.post("/conversations", status_code=201)
 async def create_conversation(
     request: Request,
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(_csrf_then_user),
     db: AsyncSession = Depends(get_db),
 ) -> ConversationOut:
-    await _check_csrf(request)
     redis = await _get_redis(request)
     await _check_rate_limit(current_user.user_id, redis)
 
@@ -170,11 +175,10 @@ async def send_message(
     conversation_id: str,
     body: MessageCreate,
     request: Request,
-    current_user: UserOut = Depends(get_current_user),
+    current_user: UserOut = Depends(_csrf_then_user),
     db: AsyncSession = Depends(get_db),
     orch: LLMOrchestrator = Depends(get_orchestrator),
 ) -> StreamingResponse:
-    await _check_csrf(request)
     redis = await _get_redis(request)
     await _check_rate_limit(current_user.user_id, redis)
 

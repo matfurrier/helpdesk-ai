@@ -27,7 +27,19 @@ os.environ.setdefault("ENV", "development")
 
 import app.db.session as _db_session  # noqa: E402
 from app.core.config import settings  # noqa: E402
+from app.core.security import create_access_token  # noqa: E402
 from app.main import app  # noqa: E402
+
+# Cookie name: __Host- prefix is stripped in dev (secure=False in auth module)
+_SESSION_COOKIE = "sds_session"
+
+_TEST_JWT_PAYLOAD: dict[str, object] = {
+    "sub": "00000000-0000-0000-0000-000000000001",
+    "login": "testuser",
+    "name": "Test User",
+    "email": "test@internal.example",
+    "role": "employee",
+}
 
 # Replace singleton engines with NullPool variants.
 # NullPool creates a fresh connection per operation, so no futures leak
@@ -46,4 +58,16 @@ _db_session._SecuritySession = async_sessionmaker(
 @pytest.fixture
 async def client() -> AsyncClient:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        yield ac
+
+
+@pytest.fixture
+async def authed_client() -> AsyncClient:
+    """AsyncClient with a pre-signed JWT cookie — skips login for integration tests."""
+    token = create_access_token(_TEST_JWT_PAYLOAD)
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        cookies={_SESSION_COOKIE: token},
+    ) as ac:
         yield ac

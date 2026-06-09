@@ -47,6 +47,7 @@ lint:
 ci-local:
 	docker exec helpdesk-backend python3 -m ruff check app/ tests/
 	docker exec helpdesk-backend python3 -m ruff format --check app/ tests/
+	@echo "lint+format clean"
 	docker exec helpdesk-backend python3 -m mypy --config-file pyproject.toml app/services app/core
 	docker exec helpdesk-backend python3 -m pytest -q
 	cd frontend && pnpm lint

@@ -237,7 +237,8 @@ async def send_message(
             text(
                 "INSERT INTO helpdesk.ai_suggestions "  # noqa: S608
                 "(message_id, next_action, suggestions, ticket_draft, citations) "
-                "VALUES (:mid, :action, :suggestions::jsonb, :ticket::jsonb, :citations)"
+                "VALUES (:mid, :action, CAST(:suggestions AS jsonb),"
+                " CAST(:ticket AS jsonb), :citations)"
             ),
             {
                 "mid": str(asst_row.id),

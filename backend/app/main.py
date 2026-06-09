@@ -29,7 +29,7 @@ structlog.configure(
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
-    redis = Redis.from_url(settings.redis_url, decode_responses=False)
+    redis = Redis.from_url(settings.redis_url, decode_responses=False, protocol=2)
     application.state.redis = redis
     await init_orchestrator(redis)
     yield

@@ -38,6 +38,6 @@ def create_access_token(data: dict[str, object]) -> str:
 def decode_token(token: str) -> dict[str, object]:
     """Raises AuthError if the token is invalid or expired."""
     try:
-        return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])  # type: ignore[return-value]
+        return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
     except JWTError as exc:
         raise AuthError("Token inválido ou expirado") from exc

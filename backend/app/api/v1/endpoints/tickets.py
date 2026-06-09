@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.errors import ForbiddenError, NotFoundError
-from app.db.session import get_db
+from app.db.session import get_db, get_security_db
 from app.schemas.auth import UserOut
 from app.schemas.tickets import (
     AddMessageIn,
@@ -188,15 +188,15 @@ async def list_tickets(
 
 
 # ---------------------------------------------------------------------------
-# GET /tickets/{ticket_id} — single ticket
+# Private helper — fetch ticket row without requester name lookup
 # ---------------------------------------------------------------------------
 
-@router.get("/{ticket_id}", response_model=TicketOut)
-async def get_ticket(
+async def _fetch_ticket(
     ticket_id: uuid.UUID,
-    current_user: UserOut = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    current_user: UserOut,
+    db: AsyncSession,
 ) -> TicketOut:
+    """Fetch a single ticket and enforce authorization. Does NOT populate requester_name."""
     row = await db.execute(
         text(
             "SELECT t.id, t.number, t.title, t.summary, t.status, t.priority, "  # noqa: S608
@@ -230,6 +230,8 @@ async def get_ticket(
         priority=str(r.priority),
         category_id=str(r.category_id) if r.category_id else None,
         requester_id=str(r.requester_id),
+        requester_name=None,
+        requester_login=None,
         assignee_id=str(r.assignee_id) if r.assignee_id else None,
         conversation_id=str(r.conversation_id) if r.conversation_id else None,
         tags=list(r.tags) if r.tags else [],
@@ -237,6 +239,40 @@ async def get_ticket(
         updated_at=r.updated_at,
         transcript=str(r.transcript) if r.transcript else None,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /tickets/{ticket_id} — single ticket (with requester name lookup)
+# ---------------------------------------------------------------------------
+
+@router.get("/{ticket_id}", response_model=TicketOut)
+async def get_ticket(
+    ticket_id: uuid.UUID,
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
+) -> TicketOut:
+    ticket = await _fetch_ticket(ticket_id, current_user, db)
+
+    # Secondary lookup for requester display name (best-effort)
+    try:
+        name_row = await sec_db.execute(
+            text(
+                "SELECT name, login FROM public.users "  # noqa: S608
+                "WHERE uuid = CAST(:uid AS uuid) LIMIT 1"
+            ),
+            {"uid": ticket.requester_id},
+        )
+        nr = name_row.fetchone()
+        if nr is not None:
+            ticket = ticket.model_copy(update={
+                "requester_name": str(nr.name) if nr.name else None,
+                "requester_login": str(nr.login) if nr.login else None,
+            })
+    except Exception:  # noqa: BLE001
+        pass  # fallback: requester_name stays None
+
+    return ticket
 
 
 # ---------------------------------------------------------------------------
@@ -426,7 +462,7 @@ async def update_status(
     log.info("ticket.status_changed", ticket_id=tid, from_s=current_status,
              to_s=new_status, actor=current_user.user_id)
 
-    return await get_ticket(ticket_id, current_user, db)
+    return await _fetch_ticket(ticket_id, current_user, db)
 
 
 # ---------------------------------------------------------------------------
@@ -463,4 +499,4 @@ async def assign_ticket(
     log.info("ticket.assigned", ticket_id=tid, assignee=body.assignee_id,
              actor=current_user.user_id)
 
-    return await get_ticket(ticket_id, current_user, db)
+    return await _fetch_ticket(ticket_id, current_user, db)

@@ -16,6 +16,7 @@ from app.schemas.kb import ArticleCreate, ArticleIngestOut
 from app.services.rag import ingester
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+kb_router = APIRouter(prefix="/kb", tags=["kb"])
 log = structlog.get_logger()
 
 _ADMIN_ROLES = frozenset({"it_admin", "it_lead"})
@@ -160,3 +161,85 @@ async def upsert_role_override(
     )
 
     return RoleOverrideOut(user_uuid=user_uuid, role=body.role)
+
+
+# ---------------------------------------------------------------------------
+# Public KB read endpoints (any authenticated user)
+# ---------------------------------------------------------------------------
+
+class KbArticleItem(BaseModel):
+    model_config = ConfigDict(strict=False)
+
+    id: str
+    slug: str
+    title: str
+    tags: list[str]
+    trust_level: str
+    created_at: str
+
+
+class KbArticleDetail(KbArticleItem):
+    body_markdown: str
+
+
+@kb_router.get("/articles", response_model=list[KbArticleItem])
+async def list_kb_articles(
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[KbArticleItem]:
+    rows = await db.execute(
+        text(
+            "SELECT a.id::text, a.slug, a.title, a.tags, a.trust_level, "  # noqa: S608
+            "a.created_at::text "
+            "FROM helpdesk.kb_articles a "
+            "ORDER BY a.created_at DESC"
+        )
+    )
+    return [
+        KbArticleItem(
+            id=r.id,
+            slug=r.slug,
+            title=r.title,
+            tags=list(r.tags) if r.tags else [],
+            trust_level=str(r.trust_level),
+            created_at=r.created_at,
+        )
+        for r in rows.fetchall()
+    ]
+
+
+@kb_router.get("/articles/{slug}", response_model=KbArticleDetail)
+async def get_kb_article(
+    slug: str,
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> KbArticleDetail:
+    from app.core.errors import NotFoundError
+
+    row = await db.execute(
+        text(
+            "SELECT a.id::text, a.slug, a.title, a.tags, a.trust_level, "  # noqa: S608
+            "a.created_at::text, v.body_markdown "
+            "FROM helpdesk.kb_articles a "
+            "JOIN helpdesk.kb_article_versions v ON v.article_id = a.id "
+            "WHERE a.slug = :slug "
+            "ORDER BY v.version DESC LIMIT 1"
+        ),
+        {"slug": slug},
+    )
+    r = row.fetchone()
+    if r is None:
+        raise NotFoundError("Artigo não encontrado")
+    return KbArticleDetail(
+        id=r.id,
+        slug=r.slug,
+        title=r.title,
+        tags=list(r.tags) if r.tags else [],
+        trust_level=str(r.trust_level),
+        created_at=r.created_at,
+        body_markdown=r.body_markdown,
+    )

@@ -45,6 +45,8 @@ class TicketOut(BaseModel):
     priority: str
     category_id: str | None
     requester_id: str
+    requester_name: str | None = None
+    requester_login: str | None = None
     assignee_id: str | None = None
     conversation_id: str | None
     tags: list[str]

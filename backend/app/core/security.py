@@ -3,6 +3,7 @@
 All JWT operations must go through this module — never import jose directly
 outside of here.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -30,9 +31,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(data: dict[str, object]) -> str:
     payload = data.copy()
-    payload["exp"] = datetime.now(UTC) + timedelta(
-        minutes=settings.access_token_expire_minutes
-    )
+    payload["exp"] = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 

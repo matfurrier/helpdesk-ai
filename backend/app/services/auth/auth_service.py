@@ -8,6 +8,7 @@ but a query on infra_postgres (2026-06-09) confirmed 0 users have a login
 value that differs from their email prefix — AD username login is Wontfix.
 See Issue #1 (closed) and SPEC.md §Authentication.
 """
+
 from __future__ import annotations
 
 import structlog

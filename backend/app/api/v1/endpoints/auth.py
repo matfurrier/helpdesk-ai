@@ -26,7 +26,7 @@ def _cookie_name() -> str:
     # __Host- prefix requires Secure=True; strip for local http dev
     name = settings.session_cookie_name
     if not _COOKIE_OPTS.get("secure") and name.startswith("__Host-"):
-        return name[len("__Host-"):]
+        return name[len("__Host-") :]
     return name
 
 
@@ -65,13 +65,15 @@ async def login(
             detail="Credencial ou senha incorretos",
         )
 
-    token = create_access_token({
-        "sub": user.uuid,
-        "login": user.login,
-        "name": user.name,
-        "email": user.email,
-        "role": user.role.value,
-    })
+    token = create_access_token(
+        {
+            "sub": user.uuid,
+            "login": user.login,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role.value,
+        }
+    )
 
     response.set_cookie(
         key=_cookie_name(),

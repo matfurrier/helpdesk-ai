@@ -10,6 +10,7 @@ Priority chain (Sprint 0):
 Role distinction between it_lead / it_admin is handled only via
 BOOTSTRAP_ADMIN_UUIDS until the helpdesk.role_overrides table arrives.
 """
+
 from __future__ import annotations
 
 from enum import StrEnum

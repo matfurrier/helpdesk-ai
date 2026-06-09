@@ -3,6 +3,7 @@
 Requires a running postgres on 5436 with the security stub tables.
 Mark with @pytest.mark.integration and run via: pytest -m integration
 """
+
 from __future__ import annotations
 
 import pytest
@@ -13,11 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 _PH = PasswordHasher()
 
+
 def _build_test_db_url() -> str:
     import os
+
     user = os.environ.get("POSTGRES_USER", "helpdesk")
-    pw   = os.environ.get("POSTGRES_PASSWORD", "")
-    db   = os.environ.get("POSTGRES_DB", "helpdesk")
+    pw = os.environ.get("POSTGRES_PASSWORD", "")
+    db = os.environ.get("POSTGRES_DB", "helpdesk")
     return f"postgresql+asyncpg://{user}:{pw}@db:5432/{db}"
 
 
@@ -94,8 +97,10 @@ async def test_bootstrap_admin_promotes_user(
     client: AsyncClient, test_user: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app.core import config as cfg
+
     monkeypatch.setattr(
-        cfg.settings, "bootstrap_admin_uuid_set",
+        cfg.settings,
+        "bootstrap_admin_uuid_set",
         frozenset(["00000000-0000-0000-0000-000000000001"]),
     )
     response = await client.post("/api/v1/auth/login", json=test_user)

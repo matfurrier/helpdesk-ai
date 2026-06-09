@@ -6,6 +6,7 @@ A single failure blocks merge.
 
 Minimum 10 cases required per SECURITY.md §9.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -15,4 +16,5 @@ import pytest
 def orchestrator_stub() -> object:
     """Returns the Sprint 0 stub orchestrator. Tests must be updated in Sprint 1."""
     from app.services.ai.orchestrator import orchestrator
+
     return orchestrator

@@ -1,4 +1,5 @@
 """Unit test for /health endpoint — no DB required."""
+
 import pytest
 from httpx import AsyncClient
 

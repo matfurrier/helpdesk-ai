@@ -453,93 +453,96 @@ async def convert_conversation(
     user_agent = request.headers.get("user-agent")
 
     # Single transaction: ticket + message + status_history + audit_log + conversation update
+    # (The SELECT FOR UPDATE above already opened the implicit transaction — do NOT call
+    # db.begin() again; SQLAlchemy 2.x autobegin raises InvalidRequestError.)
     ticket_id_str: str | None = None
     ticket_number: int | None = None
 
-    async with db.begin():
-        # a) Create ticket (conversation_id set immediately — avoids second UPDATE)
-        cat_cast = "CAST(:cat_id AS uuid)" if category_id else "NULL"
-        ticket_result = await db.execute(
-            text(
-                f"INSERT INTO helpdesk.tickets "  # noqa: S608
-                f"(title, summary, status, priority, category_id, requester_id, "
-                f"conversation_id, tags) "
-                f"VALUES (:title, :summary, 'NEW', :priority, {cat_cast}, :requester_id, "
-                f"CAST(:conv_id AS uuid), :tags) "
-                f"RETURNING id, number"
-            ),
-            {
-                "title": draft.title[:200],
-                "summary": draft.summary[:1000],
-                "priority": priority,
-                "cat_id": category_id,
-                "requester_id": current_user.user_id,
-                "conv_id": conv_id,
-                "tags": draft.tags[:6],
-            },
-        )
-        ticket_row = ticket_result.fetchone()
-        if ticket_row is None:
-            raise RuntimeError("Failed to create ticket")
-        ticket_id_str = str(ticket_row.id)
-        ticket_number = int(ticket_row.number)
+    # a) Create ticket (conversation_id set immediately — avoids second UPDATE)
+    cat_cast = "CAST(:cat_id AS uuid)" if category_id else "NULL"
+    ticket_result = await db.execute(
+        text(
+            f"INSERT INTO helpdesk.tickets "  # noqa: S608
+            f"(title, summary, status, priority, category_id, requester_id, "
+            f"conversation_id, tags) "
+            f"VALUES (:title, :summary, 'NEW', :priority, {cat_cast}, :requester_id, "
+            f"CAST(:conv_id AS uuid), :tags) "
+            f"RETURNING id, number"
+        ),
+        {
+            "title": draft.title[:200],
+            "summary": draft.summary[:1000],
+            "priority": priority,
+            "cat_id": category_id,
+            "requester_id": current_user.user_id,
+            "conv_id": conv_id,
+            "tags": draft.tags[:6],
+        },
+    )
+    ticket_row = ticket_result.fetchone()
+    if ticket_row is None:
+        raise RuntimeError("Failed to create ticket")
+    ticket_id_str = str(ticket_row.id)
+    ticket_number = int(ticket_row.number)
 
-        # b) Insert transcript as first internal message
-        await db.execute(
-            text(
-                "INSERT INTO helpdesk.ticket_messages "  # noqa: S608
-                "(ticket_id, author_id, author_role, visibility, body) "
-                "VALUES (CAST(:tid AS uuid), CAST(:author_id AS uuid), 'system', 'internal', :body)"
-            ),
-            {"tid": ticket_id_str, "author_id": _SYSTEM_UUID, "body": transcript_text},
-        )
+    # b) Insert transcript as first internal message
+    await db.execute(
+        text(
+            "INSERT INTO helpdesk.ticket_messages "  # noqa: S608
+            "(ticket_id, author_id, author_role, visibility, body) "
+            "VALUES (CAST(:tid AS uuid), CAST(:author_id AS uuid), 'system', 'internal', :body)"
+        ),
+        {"tid": ticket_id_str, "author_id": _SYSTEM_UUID, "body": transcript_text},
+    )
 
-        # c) Status history entry
-        await db.execute(
-            text(
-                "INSERT INTO helpdesk.ticket_status_history "  # noqa: S608
-                "(ticket_id, from_status, to_status, changed_by) "
-                "VALUES (CAST(:tid AS uuid), NULL, 'NEW', :changed_by)"
-            ),
-            {"tid": ticket_id_str, "changed_by": current_user.user_id},
-        )
+    # c) Status history entry
+    await db.execute(
+        text(
+            "INSERT INTO helpdesk.ticket_status_history "  # noqa: S608
+            "(ticket_id, from_status, to_status, changed_by) "
+            "VALUES (CAST(:tid AS uuid), NULL, 'NEW', :changed_by)"
+        ),
+        {"tid": ticket_id_str, "changed_by": current_user.user_id},
+    )
 
-        # d) Audit log (F-04)
-        import json as _json
+    # d) Audit log (F-04)
+    import json as _json
 
-        await db.execute(
-            text(
-                "INSERT INTO helpdesk.audit_log "  # noqa: S608
-                "(actor_id, actor_role, action, target_type, target_id, after, ip, user_agent) "
-                "VALUES (CAST(:actor_id AS uuid), :actor_role, 'ticket.created_from_chat', "
-                "'ticket', :target_id, CAST(:after AS jsonb), CAST(:ip AS inet), :ua)"
+    await db.execute(
+        text(
+            "INSERT INTO helpdesk.audit_log "  # noqa: S608
+            "(actor_id, actor_role, action, target_type, target_id, after, ip, user_agent) "
+            "VALUES (CAST(:actor_id AS uuid), :actor_role, 'ticket.created_from_chat', "
+            "'ticket', :target_id, CAST(:after AS jsonb), CAST(:ip AS inet), :ua)"
+        ),
+        {
+            "actor_id": current_user.user_id,
+            "actor_role": current_user.role,
+            "target_id": ticket_id_str,
+            "after": _json.dumps(
+                {
+                    "ticket_id": ticket_id_str,
+                    "priority": priority,
+                    "category_slug": draft.category_slug,
+                    "conversation_id": conv_id,
+                }
             ),
-            {
-                "actor_id": current_user.user_id,
-                "actor_role": current_user.role,
-                "target_id": ticket_id_str,
-                "after": _json.dumps(
-                    {
-                        "ticket_id": ticket_id_str,
-                        "priority": priority,
-                        "category_slug": draft.category_slug,
-                        "conversation_id": conv_id,
-                    }
-                ),
-                "ip": ip_str,
-                "ua": user_agent,
-            },
-        )
+            "ip": ip_str,
+            "ua": user_agent,
+        },
+    )
 
-        # e) Mark conversation as converted
-        await db.execute(
-            text(
-                "UPDATE helpdesk.ai_conversations "  # noqa: S608
-                "SET status = 'converted', ticket_id = CAST(:ticket_id AS uuid) "
-                "WHERE id = CAST(:cid AS uuid)"
-            ),
-            {"ticket_id": ticket_id_str, "cid": conv_id},
-        )
+    # e) Mark conversation as converted
+    await db.execute(
+        text(
+            "UPDATE helpdesk.ai_conversations "  # noqa: S608
+            "SET status = 'converted', ticket_id = CAST(:ticket_id AS uuid) "
+            "WHERE id = CAST(:cid AS uuid)"
+        ),
+        {"ticket_id": ticket_id_str, "cid": conv_id},
+    )
+
+    await db.commit()
 
     # F-08: Purge PII token map — data no longer needed after conversion
     await orchestrator.purge_pii_map(conv_id)

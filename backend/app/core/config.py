@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from functools import cached_property
 
 from pydantic import computed_field, field_validator
@@ -68,14 +69,32 @@ class Settings(BaseSettings):
 
     # --- AI providers ---
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = "gpt-4o-mini-2024-07-18"
     openai_embed_model: str = "text-embedding-3-small"
+    openai_max_retries: int = 1
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5-20251001"
     ai_fallback_enabled: bool = False
 
+    # --- PII / token_map ---
+    pii_map_ttl_seconds: int = 86400
+
     # --- RBAC bootstrap (Sprint 0) — see ADR-0003 ---
     bootstrap_admin_uuids: str = ""
+
+    @computed_field  # type: ignore[prop-decorator]
+    @cached_property
+    def fernet_key(self) -> bytes:
+        """32-byte Fernet key derived from SECRET_KEY (URL-safe base64 of 32 bytes).
+
+        Fernet requires a URL-safe base64-encoded 32-byte value (44 chars output).
+        We decode SECRET_KEY, take the first 32 bytes, then re-encode. Fails at boot
+        if SECRET_KEY is shorter than 32 bytes — fail-fast is intentional.
+        """
+        raw = base64.urlsafe_b64decode(self.secret_key + "==")
+        if len(raw) < 32:  # noqa: PLR2004
+            raise ValueError("SECRET_KEY must decode to at least 32 bytes for Fernet")
+        return base64.urlsafe_b64encode(raw[:32])
 
     @computed_field  # type: ignore[prop-decorator]
     @cached_property

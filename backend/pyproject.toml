@@ -25,6 +25,9 @@ dependencies = [
     "redis>=5.0",
     "minio>=7.2",
     "aiofiles>=23.2",
+    "openai>=1.40",
+    "anthropic>=0.30",
+    "cryptography>=42.0",
 ]
 
 [project.optional-dependencies]
@@ -38,6 +41,7 @@ dev = [
     "mypy>=1.11",
     "types-python-jose",
     "psycopg2-binary>=2.9",  # sync driver for Alembic migrations
+    "respx>=0.21",
 ]
 
 [tool.ruff]
@@ -52,6 +56,8 @@ ignore = ["ANN401"]
 "tests/*" = ["S", "ANN"]
 # B008: Depends() in default args is the idiomatic FastAPI DI pattern — not a bug.
 "app/api/**/*.py" = ["B008"]
+# Migration files contain long SQL strings and generated boilerplate — skip most rules.
+"alembic/versions/*.py" = ["E501", "I001", "S", "ANN"]
 
 [tool.mypy]
 python_version = "3.12"

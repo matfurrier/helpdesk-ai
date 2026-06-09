@@ -44,3 +44,8 @@ class ValidationError(HelpdeskError):
 class RateLimitError(HelpdeskError):
     http_status = 429
     code = "rate_limit"
+
+
+class LLMError(HelpdeskError):
+    http_status = 502
+    code = "llm_error"

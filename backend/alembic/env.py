@@ -4,13 +4,14 @@ The app runtime uses asyncpg; Alembic uses psycopg2 (sync) because asyncpg
 does not support multi-statement SQL strings in a single execute() call,
 which is the pattern used for the hand-authored 0001 migration.
 """
+
 from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import create_engine, pool
 
+from alembic import context
 from app.core.config import settings
 
 config = context.config
@@ -20,9 +21,7 @@ if config.config_file_name is not None:
 # Convert asyncpg URL to psycopg2 for Alembic's sync engine
 _sync_url = settings.database_url.replace(
     "postgresql+asyncpg://", "postgresql+psycopg2://"
-).replace(
-    "postgresql://", "postgresql+psycopg2://"
-)
+).replace("postgresql://", "postgresql+psycopg2://")
 config.set_main_option("sqlalchemy.url", _sync_url)
 
 target_metadata = None  # hand-authored migration, no autogenerate needed

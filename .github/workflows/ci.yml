@@ -31,8 +31,10 @@ jobs:
       SECURITY_DB_USER: helpdesk
       SECURITY_DB_PASSWORD: testpassword
       SECURITY_DB_NAME: helpdesk
-      SECRET_KEY: ci-secret-key-at-least-32-characters-long!!
+      # urlsafe_b64 of exactly 32 bytes → valid Fernet key derivation
+      SECRET_KEY: Y2ktc2VjcmV0LWtleS1mb3ItY2ktZW52aXJvbm1lbnQ=
       ENV: development
+      OPENAI_API_KEY: sk-test-key-not-used-mocked-by-respx
 
     defaults:
       run:
@@ -61,11 +63,6 @@ jobs:
       - name: Apply security stub + migration
         run: |
           pip install psycopg2-binary
-          python -c "
-          import subprocess, os
-          os.environ['DATABASE_URL'] = os.environ['DATABASE_URL'].replace('asyncpg','psycopg2')
-          "
-          # Use psql to apply the stub
           PGPASSWORD=testpassword psql -h localhost -p 5436 -U helpdesk helpdesk \
             -f ../scripts/dev_security_stub.sql
           DATABASE_URL=postgresql+psycopg2://helpdesk:testpassword@localhost:5436/helpdesk \
@@ -74,7 +71,7 @@ jobs:
       - name: Unit tests + coverage
         run: pytest tests/unit/ --cov=app --cov-report=term-missing -q
 
-      - name: Prompt injection suite (xfail allowed)
+      - name: Prompt injection suite (mock — blocks merge on failure)
         run: pytest -m prompt_injection --tb=short -q
 
   frontend:

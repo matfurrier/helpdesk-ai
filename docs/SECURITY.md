@@ -83,18 +83,34 @@ Documentos com trust < `internal_published` **nunca** entram em contexto para co
 
 ## 3. PII e LGPD
 
-### 3.1. Redactor pré-LLM
-Pipeline aplicado a TODO texto enviado para o LLM (usuário, histórico, RAG):
-- CPF: `\d{3}\.?\d{3}\.?\d{3}-?\d{2}` (com validação dígito verificador) → `[PII_CPF_N]`
-- CNPJ: `\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}` → `[PII_CNPJ_N]`
-- RG: heurística por estado → `[PII_RG_N]`
-- Telefone BR: `(?:\+?55\s?)?\(?\d{2}\)?\s?9?\d{4}-?\d{4}` → `[PII_PHONE_N]`
-- Email: regex padrão (RFC simplificada) → `[PII_EMAIL_N]`
-- IP v4/v6 → `[PII_IP_N]` *(apenas em campos textuais, não em logs estruturados de auditoria)*
-- Cartão de crédito: Luhn → `[PII_CARD_N]` (e log de incidente — não deveria estar aqui)
-- CEP: `\d{5}-?\d{3}` → `[PII_CEP_N]`
+### 3.1. Redactor pré-LLM e token_map Redis
 
-Mapa token ↔ valor original mantido **apenas em memória** durante a request. Recompõe na exibição ao usuário (que tem direito de ver seus próprios dados), mas **nunca** é persistido junto da `ai_call_log`.
+Pipeline em `app/services/ai/redactor.py` + `token_map.py`, aplicado antes de
+qualquer chamada ao LLM:
+
+| Tipo | Detecção | Token |
+|------|----------|-------|
+| CPF  | Regex + validação dígito verificador completo | `[PII_CPF_N]` |
+| CNPJ | Regex + DV completo | `[PII_CNPJ_N]` |
+| Cartão | Luhn 13–19 dígitos | `[PII_CARD_N]` |
+| Email | RFC 5321 simplificada | `[PII_EMAIL_N]` |
+| Telefone BR | `(XX) XXXXX-XXXX` e variações | `[PII_PHONE_N]` |
+| CEP | `XXXXX-XXX` | `[PII_CEP_N]` |
+| IPv4 | Octetos 0–255 | `[PII_IPV4_N]` |
+| IPv6 | Padrão completo e comprimido | `[PII_IPV6_N]` |
+
+**Armazenamento (token_map):**
+- Mapa `{token: original}` cifrado com **Fernet** (AES-128-CBC + HMAC-SHA256).
+- Chave derivada de `SECRET_KEY` (nunca armazenada em separado).
+- Armazenado em Redis com TTL **24 h** (chave `pii:{conversation_id}`).
+- Dados em Redis **nunca contêm PII em claro** — apenas o ciphertext Fernet.
+- Após TTL, tokens em mensagens antigas ficam irrestauráveis (comportamento aceito).
+
+**Persistência no banco:**
+- `ai_conversation_messages.content` armazena a versão **redatada** (com tokens).
+- O original nunca é escrito no banco (LGPD — minimização de dados).
+- `content_redacted` espelha o mesmo valor redatado para confirmação.
+- `ai_call_log.request_payload` nunca contém PII (`request_payload` é omitido ou redatado antes do INSERT).
 
 ### 3.2. Retenção
 - Tickets: 5 anos (alinhado com política LGPD da empresa).

@@ -10,6 +10,7 @@ Revision ID: 0001
 Revises: None
 Create Date: 2026-06-09
 """
+
 from __future__ import annotations
 
 from alembic import op
@@ -507,7 +508,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     conn = op.get_bind()
-    conn.execute(text("""
+    conn.execute(
+        text("""
         DROP SCHEMA IF EXISTS helpdesk_rag CASCADE;
         DROP SCHEMA IF EXISTS helpdesk CASCADE;
-    """))
+    """)
+    )

@@ -20,7 +20,7 @@
 | Pydantic     | v2                                      |
 | Alembic      | última                                  |
 | Node         | 22 LTS                                  |
-| Next.js      | 16 (App Router, Server Components)      |
+| Next.js      | 15.x (App Router, Server Components)    |
 | React        | 19                                      |
 | TypeScript   | 5.x (strict)                            |
 | Tailwind     | 4.x                                     |
@@ -128,7 +128,7 @@ MINIO_ACCESS_KEY=...
 MINIO_SECRET_KEY=...
 MINIO_BUCKET=helpdesk-attachments
 OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-5-mini
+OPENAI_MODEL=gpt-4o-mini-2024-07-18
 OPENAI_EMBED_MODEL=text-embedding-3-small
 ANTHROPIC_API_KEY=...
 ANTHROPIC_MODEL=claude-haiku-4-5-20251001
@@ -136,7 +136,6 @@ AI_FALLBACK_ENABLED=true
 SECURITY_SCHEMA=security
 HELPDESK_SCHEMA=helpdesk
 RAG_SCHEMA=helpdesk_rag
-SESSION_COOKIE_NAME=__Host-sds_session
 CSRF_SECRET=...
 CLAMAV_HOST=clamav
 CLAMAV_PORT=3310
@@ -144,32 +143,7 @@ LOG_LEVEL=INFO
 ENV=development
 ```
 
-## 7. Sprint 0 — entregáveis mínimos
-
-1. `docker-compose.yml` dev com Postgres + Redis + MinIO + ClamAV + backend + frontend.
-2. Backend respondendo `GET /api/v1/health` em `:8004`.
-3. Frontend rodando em `:3004` com tela de login funcional contra `security` schema.
-4. Migração inicial criando schemas `helpdesk` e `helpdesk_rag` a partir de `docs/DATABASE_SCHEMA.sql`.
-5. CI: lint + typecheck + testes unitários básicos + suite de prompt injection.
-6. README com instruções `docker compose up` → login → tela vazia.
-
-## 8. Subagents recomendados (Claude Code)
-
-- `@database-architect` — revisar migrations e índices.
-- `@security-auditor` — revisar qualquer mudança em `services/ai/`, `services/auth/`, sanitização, RBAC.
-- `@code-reviewer` — PRs gerais.
-- `@devops-engineer` — `docker-compose`, CI/CD, deploy Hetzner.
-
-Modelo padrão: **opusplan** (Opus planeja, Sonnet executa).
-
-## 9. MCP servers úteis nesta sessão
-
-- `postgres` apontando para o `infra_postgres` (leitura do schema `security` para entender modelo de usuários).
-- `github` para abrir PRs.
-- `sequential-thinking` para o orquestrador de IA.
-- `playwright` para os testes E2E.
-
-## 10. Padrões inspirados em apps irmãs (referência local)
+## 7. Padrões inspirados em apps irmãs (referência local)
 
 - `~/apps-staging/boardadvisor` — layout chat-first, sidebar com conversas, header limpo.
 - `~/apps-staging/flowsds` — fluxo multi-stage, status visual, transições controladas server-side.

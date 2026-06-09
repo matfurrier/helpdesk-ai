@@ -159,7 +159,7 @@ async def test_call_anthropic_returns_triage() -> None:
         {"role": "user", "content": "VPN não conecta."},
     ]
     with patch("anthropic.AsyncAnthropic", return_value=mock_client):
-        result = await _call_anthropic(messages)
+        result, in_tok, out_tok = await _call_anthropic(messages, TriageOutput)
 
     assert isinstance(result, TriageOutput)
     assert result.next_action == "ask_more"
@@ -309,7 +309,7 @@ async def test_complete_fallback_on_openai_5xx() -> None:
             response=mock_http_response,
             body={"error": {"message": "server error"}},
         )
-        mock_anthropic.return_value = fallback_result
+        mock_anthropic.return_value = (fallback_result, None, None)
 
         orch = LLMOrchestrator(redis=None)
         result = await orch.complete(

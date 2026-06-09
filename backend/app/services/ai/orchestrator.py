@@ -1,20 +1,21 @@
-"""LLM Orchestrator — Sprint 1.
+"""LLM Orchestrator — Sprint 2.
 
-All LLM calls in the application must go through LLMOrchestrator.complete().
-Never call OpenAI/Anthropic SDKs outside this module.
+All LLM calls must go through LLMOrchestrator.complete(). Never call
+OpenAI/Anthropic SDKs outside this module.
 
 Pipeline per call:
   guardrails → redactor → token_map.store → fetch prompt → LLM
-  → validate TriageOutput → token_map.restore → ai_call_log INSERT
+  → validate schema → token_map.restore → ai_call_log INSERT
 """
 
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TypeVar
 
 import structlog
 from openai import APIStatusError, AsyncOpenAI
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,14 +25,12 @@ from app.schemas.chat import TriageOutput
 from app.services.ai import guardrails, redactor
 from app.services.ai.token_map import TokenMap
 
-if TYPE_CHECKING:
-    pass
-
 log = structlog.get_logger()
 
-# In-process prompt cache: {prompt_key: (version, sha256, body, fetched_at)}
+_T = TypeVar("_T", bound=BaseModel)
+
 _prompt_cache: dict[str, tuple[int, str, str, float]] = {}
-_PROMPT_CACHE_TTL = 60.0  # seconds
+_PROMPT_CACHE_TTL = 60.0
 
 
 async def _fetch_prompt(prompt_key: str, db: AsyncSession) -> tuple[int, str, str]:
@@ -56,23 +55,31 @@ async def _fetch_prompt(prompt_key: str, db: AsyncSession) -> tuple[int, str, st
     return int(row.version), str(row.sha256), str(row.body)
 
 
-async def _call_openai(messages: list[dict[str, str]]) -> TriageOutput:
-    client = AsyncOpenAI(
-        api_key=settings.openai_api_key,
-        max_retries=settings.openai_max_retries,
-    )
+async def _call_openai[T: BaseModel](
+    messages: list[dict[str, str]],
+    schema_type: type[T],
+) -> tuple[T, int | None, int | None]:
+    client = AsyncOpenAI(api_key=settings.openai_api_key, max_retries=settings.openai_max_retries)
     response = await client.beta.chat.completions.parse(
         model=settings.openai_model,
         messages=messages,  # type: ignore[arg-type]
-        response_format=TriageOutput,
+        response_format=schema_type,
     )
     parsed = response.choices[0].message.parsed
     if parsed is None:
         raise LLMError("OpenAI returned null structured output")
-    return parsed
+    usage = response.usage
+    return (
+        parsed,
+        (usage.prompt_tokens if usage else None),
+        (usage.completion_tokens if usage else None),
+    )
 
 
-async def _call_anthropic(messages: list[dict[str, str]]) -> TriageOutput:
+async def _call_anthropic[T: BaseModel](
+    messages: list[dict[str, str]],
+    schema_type: type[T],
+) -> tuple[T, int | None, int | None]:
     import json as _json
 
     import anthropic
@@ -85,13 +92,11 @@ async def _call_anthropic(messages: list[dict[str, str]]) -> TriageOutput:
         for m in messages
         if m["role"] != "system"
     ]
-
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    schema = TriageOutput.model_json_schema()
     tool: ToolParam = {
-        "name": "triage_output",
-        "description": "Structured triage response",
-        "input_schema": schema,
+        "name": "structured_output",
+        "description": "Structured response",
+        "input_schema": schema_type.model_json_schema(),
     }
     response = await client.messages.create(
         model=settings.anthropic_model,
@@ -99,11 +104,13 @@ async def _call_anthropic(messages: list[dict[str, str]]) -> TriageOutput:
         system=system_msg,
         messages=user_msgs,
         tools=[tool],
-        tool_choice=ToolChoiceToolParam(type="tool", name="triage_output"),
+        tool_choice=ToolChoiceToolParam(type="tool", name="structured_output"),
     )
     tool_use = next(b for b in response.content if b.type == "tool_use")
     raw = tool_use.input if isinstance(tool_use.input, dict) else _json.loads(tool_use.input)
-    return TriageOutput.model_validate(raw)
+    result = schema_type.model_validate(raw)
+    usage = response.usage
+    return result, (usage.input_tokens if usage else None), (usage.output_tokens if usage else None)
 
 
 async def _log_call(
@@ -159,6 +166,22 @@ async def _log_call(
         log.warning("orchestrator.log_failed", error=str(exc))
 
 
+def _build_messages(
+    prompt_body: str,
+    clean_input: str,
+    context_blocks: list[dict[str, object]] | None,
+) -> list[dict[str, str]]:
+    msgs: list[dict[str, str]] = [{"role": "system", "content": prompt_body}]
+    if context_blocks:
+        ctx_text = "\n".join(
+            f"<source id='{b.get('id', '')}'>{b.get('content', '')}</source>"
+            for b in context_blocks
+        )
+        msgs.append({"role": "system", "content": ctx_text})
+    msgs.append({"role": "user", "content": clean_input})
+    return msgs
+
+
 class LLMOrchestrator:
     """Central LLM call gateway with guardrails, redaction, and audit logging."""
 
@@ -173,52 +196,37 @@ class LLMOrchestrator:
         prompt_key: str,
         user_input: str,
         context_blocks: list[dict[str, object]] | None = None,
-        schema: type | None = None,
+        schema: type[_T] = TriageOutput,  # type: ignore[assignment]
         user_id: str | None = None,
         conversation_id: str | None = None,
         db: AsyncSession,
-    ) -> TriageOutput:
-        """Run the full pipeline and return a validated TriageOutput."""
+    ) -> _T:
+        """Run the full pipeline and return a validated structured output."""
         start = time.monotonic()
-
-        # 1. Guardrails
         flags = guardrails.check(user_input)
-
-        # 2. Redact PII
         clean_input, pii_map = redactor.redact(user_input)
 
-        # 3. Store PII map in Redis
         if self._token_map is not None and conversation_id and pii_map:
             await self._token_map.store(conversation_id, pii_map)
 
-        # 4. Fetch prompt
         prompt_version, prompt_sha256, prompt_body = await _fetch_prompt(prompt_key, db)
+        messages = _build_messages(prompt_body, clean_input, context_blocks)
 
-        # 5. Build messages
-        messages: list[dict[str, str]] = [{"role": "system", "content": prompt_body}]
-        if context_blocks:
-            ctx_text = "\n".join(
-                f"<source id='{b.get('id', '')}'>{b.get('content', '')}</source>"
-                for b in context_blocks
-            )
-            messages.append({"role": "system", "content": ctx_text})
-        messages.append({"role": "user", "content": clean_input})
-
-        # 6. Call LLM (OpenAI primary, Anthropic fallback)
         provider = "openai"
         model = settings.openai_model
         was_fallback = False
         http_status = 200
         validation_status = "ok"
-        result: TriageOutput | None = None
+        result: _T | None = None
         input_tokens: int | None = None
         output_tokens: int | None = None
 
         try:
-            result = await _call_openai(messages)
-            result = result.model_copy(
-                update={"guardrails_triggered": flags or result.guardrails_triggered}
-            )
+            result, input_tokens, output_tokens = await _call_openai(messages, schema)
+            if hasattr(result, "guardrails_triggered"):
+                result = result.model_copy(
+                    update={"guardrails_triggered": flags or result.guardrails_triggered}
+                )
         except APIStatusError as exc:
             http_status = exc.status_code
             if not settings.ai_fallback_enabled or exc.status_code < 500:  # noqa: PLR2004
@@ -242,17 +250,17 @@ class LLMOrchestrator:
                 )
                 raise LLMError(f"OpenAI error {exc.status_code}: {exc.message}") from exc
 
-            # 5xx + fallback enabled
             log.warning("orchestrator.openai_5xx_fallback", status=exc.status_code)
             provider = "anthropic"
             model = settings.anthropic_model
             was_fallback = True
             http_status = 200
             try:
-                result = await _call_anthropic(messages)
-                result = result.model_copy(
-                    update={"guardrails_triggered": flags or result.guardrails_triggered}
-                )
+                result, input_tokens, output_tokens = await _call_anthropic(messages, schema)
+                if hasattr(result, "guardrails_triggered"):
+                    result = result.model_copy(
+                        update={"guardrails_triggered": flags or result.guardrails_triggered}
+                    )
             except Exception as anth_exc:
                 validation_status = "failed"
                 await _log_call(
@@ -274,8 +282,13 @@ class LLMOrchestrator:
                 )
                 raise LLMError("Both OpenAI and Anthropic failed") from anth_exc
 
-        # 7. Restore PII tokens in the assistant reply
-        if self._token_map is not None and conversation_id and pii_map and result:
+        if (
+            self._token_map is not None
+            and conversation_id
+            and pii_map
+            and result is not None
+            and isinstance(result, TriageOutput)
+        ):
             result = result.model_copy(
                 update={
                     "assistant_text": await self._token_map.restore(
@@ -285,8 +298,6 @@ class LLMOrchestrator:
             )
 
         assert result is not None  # noqa: S101
-
-        # 8. Audit log
         latency_ms = int((time.monotonic() - start) * 1000)
         await _log_call(
             db=db,
@@ -301,32 +312,32 @@ class LLMOrchestrator:
             output_tokens=output_tokens,
             latency_ms=latency_ms,
             http_status=http_status,
-            guardrail_flags=result.guardrails_triggered,
+            guardrail_flags=getattr(result, "guardrails_triggered", flags),
             was_fallback=was_fallback,
             validation_status=validation_status,
         )
-
         log.info(
             "orchestrator.complete",
             prompt_key=prompt_key,
-            next_action=result.next_action,
-            flags=result.guardrails_triggered,
+            next_action=getattr(result, "next_action", None),
             latency_ms=latency_ms,
             provider=provider,
         )
         return result
 
+    async def purge_pii_map(self, conversation_id: str) -> None:
+        """Delete the PII token map after ticket conversion (LGPD data minimization)."""
+        if self._token_map is not None:
+            await self._token_map.purge(conversation_id)
 
-# Application singleton — redis injected at app lifespan
+
 orchestrator = LLMOrchestrator()
 
 
 async def get_orchestrator() -> LLMOrchestrator:
-    """FastAPI dependency. Returns the singleton (redis attached on first use)."""
     return orchestrator
 
 
 async def init_orchestrator(redis: object) -> None:
-    """Called from app lifespan to attach the Redis client."""
     global orchestrator  # noqa: PLW0603
     orchestrator = LLMOrchestrator(redis=redis)

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.errors import AuthError
+from app.core.errors import AuthError, ForbiddenError
 from app.core.security import create_access_token, decode_token
 from app.db.session import get_security_db
 from app.schemas.auth import LoginRequest, UserOut
@@ -52,12 +54,36 @@ async def get_current_user(
     )
 
 
+@router.get("/csrf-token")
+async def get_auth_csrf_token(response: Response) -> dict[str, str]:
+    """Issue a CSRF token for the login form. Frontend must call before POST /login."""
+    token = secrets.token_hex(32)
+    response.set_cookie(
+        key="csrf_token",
+        value=token,
+        httponly=False,
+        samesite="lax",
+        secure=not settings.is_dev,
+        path="/",
+    )
+    return {"csrf_token": token}
+
+
+async def _check_csrf(request: Request) -> None:
+    cookie_token = request.cookies.get("csrf_token")
+    header_token = request.headers.get("X-CSRF-Token")
+    if not cookie_token or not header_token or cookie_token != header_token:
+        raise ForbiddenError("CSRF token inválido ou ausente")
+
+
 @router.post("/login", response_model=UserOut)
 async def login(
     body: LoginRequest,
+    request: Request,
     response: Response,
     sec_db: AsyncSession = Depends(get_security_db),
 ) -> UserOut:
+    await _check_csrf(request)
     user = await authenticate(body.credential, body.password, sec_db)
     if user is None:
         raise HTTPException(

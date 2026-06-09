@@ -15,6 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 _PH = PasswordHasher()
 
 
+async def _csrf(client: AsyncClient) -> tuple[str, dict[str, str]]:
+    """Fetch a CSRF token and return (token, headers_dict)."""
+    resp = await client.get("/api/v1/auth/csrf-token")
+    token = resp.json()["csrf_token"]
+    return token, {"X-CSRF-Token": token}
+
+
 def _build_test_db_url() -> str:
     import os
 
@@ -62,20 +69,28 @@ async def test_user(sec_db: AsyncSession) -> dict[str, str]:
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_login_success(client: AsyncClient, test_user: dict[str, str]) -> None:
-    response = await client.post("/api/v1/auth/login", json=test_user)
+    csrf_token, csrf_headers = await _csrf(client)
+    response = await client.post(
+        "/api/v1/auth/login",
+        json=test_user,
+        headers=csrf_headers,
+        cookies={"csrf_token": csrf_token},
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["role"] == "employee"
-    # Cookie should be set
     assert "sds_session" in response.headers.get("set-cookie", "")
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_login_bad_password(client: AsyncClient, test_user: dict[str, str]) -> None:
+    csrf_token, csrf_headers = await _csrf(client)
     response = await client.post(
         "/api/v1/auth/login",
         json={"credential": test_user["credential"], "password": "wrongpassword"},
+        headers=csrf_headers,
+        cookies={"csrf_token": csrf_token},
     )
     assert response.status_code == 401
 
@@ -83,9 +98,14 @@ async def test_login_bad_password(client: AsyncClient, test_user: dict[str, str]
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_me_with_cookie(client: AsyncClient, test_user: dict[str, str]) -> None:
-    login_resp = await client.post("/api/v1/auth/login", json=test_user)
+    csrf_token, csrf_headers = await _csrf(client)
+    login_resp = await client.post(
+        "/api/v1/auth/login",
+        json=test_user,
+        headers=csrf_headers,
+        cookies={"csrf_token": csrf_token},
+    )
     assert login_resp.status_code == 200
-    # Cookie is set automatically by httpx via set-cookie header
     me_resp = await client.get("/api/v1/auth/me")
     assert me_resp.status_code == 200
     assert me_resp.json()["email"] == test_user["credential"]
@@ -103,6 +123,12 @@ async def test_bootstrap_admin_promotes_user(
         "bootstrap_admin_uuid_set",
         frozenset(["00000000-0000-0000-0000-000000000001"]),
     )
-    response = await client.post("/api/v1/auth/login", json=test_user)
+    csrf_token, csrf_headers = await _csrf(client)
+    response = await client.post(
+        "/api/v1/auth/login",
+        json=test_user,
+        headers=csrf_headers,
+        cookies={"csrf_token": csrf_token},
+    )
     assert response.status_code == 200
     assert response.json()["role"] == "it_admin"

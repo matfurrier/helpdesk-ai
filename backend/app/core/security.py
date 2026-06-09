@@ -5,7 +5,7 @@ outside of here.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
@@ -30,7 +30,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(data: dict[str, object]) -> str:
     payload = data.copy()
-    payload["exp"] = datetime.now(timezone.utc) + timedelta(
+    payload["exp"] = datetime.now(UTC) + timedelta(
         minutes=settings.access_token_expire_minutes
     )
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)

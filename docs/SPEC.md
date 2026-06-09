@@ -30,7 +30,27 @@ IA gera:
 Ticket entra na fila do TI com status NEW
 ```
 
-## 2. Papéis e permissões
+## 2. Autenticação
+
+**Email apenas.** A autenticação é feita exclusivamente pelo campo `email` de
+`public.users` (banco `security`), comparação case-insensitive.
+
+O campo `login` (AD username) existe na tabela mas **não é critério de busca**.
+Query executada em infra_postgres em 2026-06-09 confirmou 0 usuários ativos com
+`login` diferente do prefixo do email:
+
+```sql
+SELECT count(*) FROM public.users
+WHERE active = 1 AND login IS NOT NULL
+  AND login != split_part(email, '@', 1);
+-- Resultado: 0
+```
+
+**Decisão:** Wontfix — login por AD username não é necessário. Se o cenário
+mudar (ex: usuários AD sem email corporativo), abrir nova issue antes de
+reativar a condição `login = :credential` em `auth_service.py`.
+
+## 3. Papéis e permissões
 
 | Papel        | Pode                                                                 | Não pode                                |
 |--------------|----------------------------------------------------------------------|------------------------------------------|
@@ -39,7 +59,9 @@ Ticket entra na fila do TI com status NEW
 | `it_lead`    | Tudo de `it_agent` + dashboards gerenciais, reabrir, mesclar tickets | Mexer em prompts/RAG sources             |
 | `it_admin`   | Tudo                                                                 | —                                        |
 
-Mapping para o schema `security` existente: papéis são grupos (`helpdesk:employee`, `helpdesk:it_agent`, `helpdesk:it_lead`, `helpdesk:it_admin`). Default implícito = `employee` para qualquer usuário autenticado.
+Mapping para o schema `security` existente: derivado de `departmentid` (Sprint 0/1)
+e futuramente de `helpdesk.role_overrides` (Sprint 2). Default implícito = `employee`
+para qualquer usuário autenticado.
 
 ## 3. Telas
 

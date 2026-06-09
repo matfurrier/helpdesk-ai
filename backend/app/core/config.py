@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import cached_property
 
-from pydantic import computed_field
+from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     security_db_password: str = ""
     security_db_name: str
     security_schema: str = "public"  # schema inside security DB (always 'public')
+
+    @field_validator("security_schema")
+    @classmethod
+    def _validate_security_schema(cls, v: str) -> str:
+        if v not in {"public", "security"}:
+            raise ValueError(f"security_schema must be 'public' or 'security', got {v!r}")
+        return v
 
     # TI department ID in public.department — users with this dept get it_agent role
     it_department_id: int = 1
@@ -76,7 +83,9 @@ class Settings(BaseSettings):
         """Lower-cased UUID set for O(1) membership checks."""
         if not self.bootstrap_admin_uuids:
             return frozenset()
-        return frozenset(u.strip().lower() for u in self.bootstrap_admin_uuids.split(",") if u.strip())
+        return frozenset(
+            u.strip().lower() for u in self.bootstrap_admin_uuids.split(",") if u.strip()
+        )
 
     @property
     def is_dev(self) -> bool:

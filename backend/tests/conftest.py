@@ -5,7 +5,7 @@ import os
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 # Force test env BEFORE app import so pydantic-settings picks up overrides.
@@ -24,9 +24,9 @@ os.environ["SECURITY_SCHEMA"]      = "public"
 os.environ.setdefault("SECRET_KEY", "test-secret-key-do-not-use-in-production-32chars!!")
 os.environ.setdefault("ENV", "development")
 
-from app.main import app  # noqa: E402
-from app.core.config import settings
 import app.db.session as _db_session  # noqa: E402
+from app.core.config import settings  # noqa: E402
+from app.main import app  # noqa: E402
 
 # Replace singleton engines with NullPool variants.
 # NullPool creates a fresh connection per operation, so no futures leak

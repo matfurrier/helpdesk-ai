@@ -12,7 +12,7 @@ BOOTSTRAP_ADMIN_UUIDS until the helpdesk.role_overrides table arrives.
 """
 from __future__ import annotations
 
-import enum
+from enum import StrEnum
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 
 
-class Role(str, enum.Enum):
+class Role(StrEnum):
     EMPLOYEE = "employee"
     IT_AGENT = "it_agent"
     IT_LEAD = "it_lead"
@@ -43,9 +43,7 @@ async def resolve_role(user_uuid: str, sec_db: AsyncSession) -> Role:
     try:
         result = await sec_db.execute(
             text(
-                "SELECT departmentid FROM {schema}.users WHERE uuid = :uuid".format(
-                    schema=settings.security_schema
-                )
+                f"SELECT departmentid FROM {settings.security_schema}.users WHERE uuid = :uuid"  # noqa: S608
             ),
             {"uuid": user_uuid},
         )

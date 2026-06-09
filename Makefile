@@ -1,4 +1,4 @@
-.PHONY: dev test migrate migrate-swarm migrate-prod lint build down frontend-bootstrap
+.PHONY: dev test migrate migrate-swarm migrate-prod lint ci-local build down frontend-bootstrap
 
 # Start all services with hot-reload
 dev:
@@ -41,6 +41,17 @@ migrate-prod:
 # Lint backend
 lint:
 	cd backend && ruff check app/ tests/ && ruff format --check app/ tests/
+
+# Run the exact same checklist as CI — run before every push
+# Requires: docker compose up (backend), pnpm installed in frontend
+ci-local:
+	docker exec helpdesk-backend python3 -m ruff check app/ tests/
+	docker exec helpdesk-backend python3 -m ruff format --check app/ tests/
+	docker exec helpdesk-backend python3 -m mypy --config-file pyproject.toml app/services app/core
+	docker exec helpdesk-backend python3 -m pytest -q
+	cd frontend && pnpm lint
+	cd frontend && pnpm typecheck
+	cd frontend && pnpm test
 
 # Stop all containers
 down:

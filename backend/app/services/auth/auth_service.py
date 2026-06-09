@@ -2,10 +2,11 @@
 
 Queries public.users in the security database (the shared user directory
 used by all internal apps). Uses argon2id verification.
-Accepts email (users.email) and AD login (users.login).
 
-Sprint 1 issue: confirm whether email-only login is sufficient or we need
-to fall back to AD direct lookup. See open-issues in README.
+Authentication is by email only. The login column exists in public.users
+but a query on infra_postgres (2026-06-09) confirmed 0 users have a login
+value that differs from their email prefix — AD username login is Wontfix.
+See Issue #1 (closed) and SPEC.md §Authentication.
 """
 from __future__ import annotations
 
@@ -45,15 +46,14 @@ async def authenticate(
 ) -> AuthenticatedUser | None:
     """Return an AuthenticatedUser or None on failure.
 
-    *credential* is checked against both ``login`` (AD username) and ``email``.
+    *credential* is matched against ``email`` only (case-insensitive).
     """
     result = await sec_db.execute(
-        text("""
-            SELECT id, uuid, login, name, email, password, active
-            FROM   {schema}.users
-            WHERE  login = :credential
-               OR  lower(email) = lower(:credential)
-        """.format(schema=settings.security_schema)),
+        text(
+            "SELECT id, uuid, login, name, email, password, active"  # noqa: S608
+            f" FROM {settings.security_schema}.users"
+            " WHERE lower(email) = lower(:credential)"
+        ),
         {"credential": credential},
     )
     row = result.fetchone()

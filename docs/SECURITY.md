@@ -121,7 +121,7 @@ Mapa token ↔ valor original mantido **apenas em memória** durante a request. 
 | `it_lead`   | Tudo de it_agent + reatribuir entre agentes, ver dashboards completos.       |
 | `it_admin`  | Tudo + configurações, prompts, KB, RAG sources, modelos de IA.               |
 
-Mapeamento: grupos do schema `security` com prefixo `helpdesk:it_*` (`helpdesk:it_agent`, `helpdesk:it_lead`, `helpdesk:it_admin`). Sem grupo → `employee` por padrão.
+Mapeamento atual: `departmentid == 1` (TI) → `it_agent`; `BOOTSTRAP_ADMIN_UUIDS` → `it_admin`; demais → `employee`. Sprint 2 substituirá por `helpdesk.role_overrides`. Autenticação por email apenas — ver SPEC.md §2.
 
 Função SQL `helpdesk.fn_user_role(user_id uuid) returns text` resolve no nível do banco. Backend faz o mesmo cálculo no middleware de auth para gating de rotas.
 

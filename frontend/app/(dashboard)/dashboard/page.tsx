@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { buildApiUrl } from "@/lib/api";
 import { FilterBar } from "@/components/tickets/filter-bar";
@@ -90,11 +91,11 @@ function EmployeeDashboard({ user }: { user: UserOut }) {
           <h2 className="text-sm font-semibold text-zinc-200 group-hover:text-white">Abrir chamado</h2>
           <p className="text-xs text-zinc-500 mt-1">Descreva seu problema e a IA vai te ajudar</p>
         </a>
-        <a href="/tickets" className="bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-lg p-5 transition-colors group">
+        <Link href="/tickets" className="bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-lg p-5 transition-colors group">
           <div className="text-2xl mb-2">📋</div>
           <h2 className="text-sm font-semibold text-zinc-200 group-hover:text-white">Meus chamados</h2>
           <p className="text-xs text-zinc-500 mt-1">Acompanhe o status dos seus tickets</p>
-        </a>
+        </Link>
       </div>
     </div>
   );

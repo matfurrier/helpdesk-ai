@@ -439,8 +439,8 @@ async def update_category(
     set_clause = ", ".join(f"{k} = :{k}" for k in updates)
     updates["cat_id"] = category_id
     res = await db.execute(
-        text(  # noqa: S608
-            f"UPDATE helpdesk.categories SET {set_clause} "
+        text(
+            f"UPDATE helpdesk.categories SET {set_clause} "  # noqa: S608
             f"WHERE id = CAST(:cat_id AS uuid) "
             f"RETURNING id::text, slug, name, description, sort_order, is_active"
         ),
@@ -690,7 +690,7 @@ async def export_tickets_csv(
 
     rows = await db.execute(
         text(
-            f"SELECT t.ticket_number, t.title, t.status, t.priority, "
+            f"SELECT t.ticket_number, t.title, t.status, t.priority, "  # noqa: S608
             f"       c.name AS category, t.requester_id::text, t.assignee_id::text, "
             f"       t.created_at::text, t.resolved_at::text, t.first_response_at::text, "
             f"       t.first_response_due_at::text, t.resolution_due_at::text "
@@ -757,7 +757,7 @@ async def report_csat(
 
     rows = await db.execute(
         text(
-            f"SELECT t.ticket_number, t.title, us.rating, us.comment, "
+            f"SELECT t.ticket_number, t.title, us.rating, us.comment, "  # noqa: S608
             f"       us.responded_at::text, t.resolved_at::text AS closed_at "
             f"FROM helpdesk.user_satisfaction us "
             f"JOIN helpdesk.tickets t ON t.id = us.ticket_id "

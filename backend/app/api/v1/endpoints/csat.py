@@ -6,12 +6,12 @@ POST /public/csat/{token}  → submit rating (1-5) + optional comment
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import NotFoundError, ConflictError
+from app.core.errors import ConflictError, NotFoundError
 from app.db.session import get_db
 
 router = APIRouter(prefix="/public/csat", tags=["csat"])

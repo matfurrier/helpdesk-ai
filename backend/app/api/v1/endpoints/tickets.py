@@ -24,7 +24,6 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.core.errors import ForbiddenError, NotFoundError
 from app.db.session import get_db, get_security_db
 from app.schemas.auth import UserOut
-from app.services.notifications import hooks as _hooks
 from app.schemas.tickets import (
     AddMessageIn,
     AssignUpdateIn,
@@ -37,6 +36,7 @@ from app.schemas.tickets import (
     TicketOut,
     TicketStatsOut,
 )
+from app.services.notifications import hooks as _hooks
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 log = structlog.get_logger()
@@ -179,7 +179,7 @@ async def get_filter_options(
                     departments[int(u.departmentid)] = str(
                         u.departmentname or f"Dept {u.departmentid}"
                     )
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110
             pass
 
     # Categories
@@ -441,7 +441,7 @@ async def list_tickets(
                 {"uids": all_uids},
             )
             name_map = {str(nr.uid): str(nr.name) for nr in name_rows.fetchall() if nr.name}
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110
             pass  # names stay empty on security-DB error
 
     from app.schemas.tickets import TicketListItem  # local to avoid circular
@@ -565,13 +565,17 @@ async def get_ticket(
             for nr in name_rows.fetchall()
         }
         req_info = uid_info.get(ticket.requester_id, (None, None))
-        assign_info = uid_info.get(ticket.assignee_id or "", (None, None)) if ticket.assignee_id else (None, None)
+        assign_info = (
+            uid_info.get(ticket.assignee_id or "", (None, None))
+            if ticket.assignee_id
+            else (None, None)
+        )
         ticket = ticket.model_copy(update={
             "requester_name": req_info[0],
             "requester_login": req_info[1],
             "assignee_name": assign_info[0],
         })
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110
         pass  # fallback: names stay None
 
     return ticket

@@ -6,8 +6,6 @@ They open their own DB sessions so they don't interfere with request sessions.
 
 from __future__ import annotations
 
-import asyncio
-import json
 import uuid
 
 import structlog
@@ -286,7 +284,7 @@ async def notify_assigned(
             r = row.fetchone()
             if r and r.name:
                 assignee_name = str(r.name)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110
         pass
 
     subject, body = _email.tpl_ticket_assigned(ticket_number, title, assignee_name)

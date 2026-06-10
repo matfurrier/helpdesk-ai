@@ -63,7 +63,9 @@ async def _process_batch(db: AsyncSession) -> int:
     for row in rows:
         row_id = str(row.id)
         try:
-            payload: dict[str, object] = row.payload if isinstance(row.payload, dict) else json.loads(row.payload)
+            payload: dict[str, object] = (
+                row.payload if isinstance(row.payload, dict) else json.loads(row.payload)
+            )
             to = payload.get("to", [])
             subject = str(payload.get("subject", ""))
             body_html = str(payload.get("body_html", ""))
@@ -110,6 +112,6 @@ async def run_worker(stop_event: asyncio.Event) -> None:
             log.error("outbox_worker.error", error=str(exc))
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=_POLL_INTERVAL)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
     log.info("outbox_worker.stopped")

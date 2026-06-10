@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import email.mime.multipart
 import email.mime.text
-from email.headerregistry import Address
 
 import aiosmtplib
 import structlog

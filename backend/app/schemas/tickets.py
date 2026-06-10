@@ -13,6 +13,25 @@ TicketStatus = Literal[
 ]
 
 
+class CategoryOut(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    id: str
+    slug: str
+    name: str
+    description: str | None = None
+    sort_order: int
+
+
+class SlaMatrixOut(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    priority: str
+    first_response_hours: int
+    resolution_hours: int
+    description: str | None = None
+
+
 class TicketDraftOutput(BaseModel):
     """Structured output returned by TICKET_DRAFT_SYSTEM prompt."""
 
@@ -44,12 +63,18 @@ class TicketOut(BaseModel):
     status: str
     priority: str
     category_id: str | None
+    category_name: str | None = None
+    category_slug: str | None = None
     requester_id: str
     requester_name: str | None = None
     requester_login: str | None = None
     assignee_id: str | None = None
     conversation_id: str | None
     tags: list[str]
+    first_response_due_at: datetime | None = None
+    resolution_due_at: datetime | None = None
+    first_response_at: datetime | None = None
+    resolved_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     transcript: str | None = None
@@ -64,9 +89,14 @@ class TicketListItem(BaseModel):
     title: str
     status: str
     priority: str
+    category_slug: str | None = None
+    category_name: str | None = None
     requester_id: str
     assignee_id: str | None
     tags: list[str]
+    resolution_due_at: datetime | None = None
+    first_response_at: datetime | None = None
+    resolved_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -120,6 +150,12 @@ class AssignUpdateIn(BaseModel):
     assignee_id: str | None
 
 
+class CategoryUpdateIn(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    category_slug: str | None
+
+
 class KbArticleCreate(BaseModel):
     model_config = ConfigDict(strict=True)
 
@@ -167,3 +203,4 @@ class FilterOptionsOut(BaseModel):
     years: list[int]
     departments: list[FilterDept]
     users: list[FilterUser]
+    categories: list[CategoryOut] = Field(default_factory=list)

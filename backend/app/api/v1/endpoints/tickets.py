@@ -26,6 +26,9 @@ from app.schemas.auth import UserOut
 from app.schemas.tickets import (
     AddMessageIn,
     AssignUpdateIn,
+    CategoryOut,
+    CategoryUpdateIn,
+    SlaMatrixOut,
     StatusUpdateIn,
     TicketListOut,
     TicketMessageOut,
@@ -37,6 +40,62 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 log = structlog.get_logger()
 
 _IT_ROLES = frozenset({"it_agent", "it_lead", "it_admin"})
+
+
+# ---------------------------------------------------------------------------
+# GET /tickets/categories — list active categories (authenticated)
+# ---------------------------------------------------------------------------
+
+@router.get("/categories", response_model=list[CategoryOut])
+async def list_categories(
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[CategoryOut]:
+    rows = await db.execute(
+        text(
+            "SELECT id, slug, name, description, sort_order "  # noqa: S608
+            "FROM helpdesk.categories WHERE is_active = true "
+            "ORDER BY sort_order, name"
+        )
+    )
+    return [
+        CategoryOut(
+            id=str(r.id),
+            slug=str(r.slug),
+            name=str(r.name),
+            description=str(r.description) if r.description else None,
+            sort_order=int(r.sort_order),
+        )
+        for r in rows.fetchall()
+    ]
+
+
+# ---------------------------------------------------------------------------
+# GET /tickets/sla — SLA matrix (authenticated)
+# ---------------------------------------------------------------------------
+
+@router.get("/sla", response_model=list[SlaMatrixOut])
+async def list_sla(
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[SlaMatrixOut]:
+    rows = await db.execute(
+        text(
+            "SELECT priority, first_response_hours, resolution_hours, description "  # noqa: S608
+            "FROM helpdesk.sla_matrix "
+            "ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 "
+            "  WHEN 'normal' THEN 3 ELSE 4 END"
+        )
+    )
+    return [
+        SlaMatrixOut(
+            priority=str(r.priority),
+            first_response_hours=int(r.first_response_hours),
+            resolution_hours=int(r.resolution_hours),
+            description=str(r.description) if r.description else None,
+        )
+        for r in rows.fetchall()
+    ]
 
 _ACTIVE_STATUSES = ("NEW", "TRIAGE", "IN_PROGRESS", "WAITING_USER", "REOPENED")
 
@@ -118,6 +177,24 @@ async def get_filter_options(
         except Exception:  # noqa: BLE001
             pass
 
+    # Categories
+    cat_rows = await db.execute(
+        text(
+            "SELECT id, slug, name, description, sort_order "  # noqa: S608
+            "FROM helpdesk.categories WHERE is_active = true ORDER BY sort_order, name"
+        )
+    )
+    categories = [
+        CategoryOut(
+            id=str(c.id),
+            slug=str(c.slug),
+            name=str(c.name),
+            description=str(c.description) if c.description else None,
+            sort_order=int(c.sort_order),
+        )
+        for c in cat_rows.fetchall()
+    ]
+
     from app.schemas.tickets import FilterDept, FilterOptionsOut, FilterUser  # local import
 
     return FilterOptionsOut(
@@ -130,6 +207,7 @@ async def get_filter_options(
             [FilterUser(id=u["id"], name=str(u["name"])) for u in users],
             key=lambda u: u.name,
         ),
+        categories=categories,
     ).model_dump()
 
 
@@ -232,6 +310,7 @@ async def get_ticket_stats(
 async def list_tickets(
     status: Annotated[str | None, Query()] = None,
     priority: Annotated[str | None, Query()] = None,
+    category_slug: Annotated[str | None, Query()] = None,
     unassigned: Annotated[bool, Query()] = False,
     year: Annotated[int | None, Query()] = None,
     month: Annotated[int | None, Query()] = None,
@@ -250,55 +329,66 @@ async def list_tickets(
     params: dict[str, object] = {"limit": limit, "offset": offset}
 
     if not agent:
-        conditions.append("requester_id = :uid")
+        conditions.append("t.requester_id = :uid")
         params["uid"] = current_user.user_id
 
     if status:
-        conditions.append("status = :status")
+        conditions.append("t.status = :status")
         params["status"] = status.upper()
 
     if priority:
-        conditions.append("priority = :priority")
+        conditions.append("t.priority = :priority")
         params["priority"] = priority.lower()
 
+    if category_slug:
+        conditions.append("c.slug = :cat_slug")
+        params["cat_slug"] = category_slug
+
     if unassigned and agent:
-        conditions.append("assignee_id IS NULL AND status = ANY(:active)")
+        conditions.append("t.assignee_id IS NULL AND t.status = ANY(:active)")
         params["active"] = list(_ACTIVE_STATUSES)
 
     if agent:
         if year:
-            conditions.append("EXTRACT(YEAR FROM created_at) = :year")
+            conditions.append("EXTRACT(YEAR FROM t.created_at) = :year")
             params["year"] = year
         if month:
-            conditions.append("EXTRACT(MONTH FROM created_at) = :month")
+            conditions.append("EXTRACT(MONTH FROM t.created_at) = :month")
             params["month"] = month
         if user_id:
-            conditions.append("requester_id = CAST(:filter_uid AS uuid)")
+            conditions.append("t.requester_id = CAST(:filter_uid AS uuid)")
             params["filter_uid"] = user_id
         if dept_id:
             dept_uuids = await _resolve_dept_uuids(dept_id, sec_db)
             if not dept_uuids:
                 return TicketListOut(items=[], total=0)
-            conditions.append("requester_id = ANY(:dept_uuids)")
+            conditions.append("t.requester_id = ANY(:dept_uuids)")
             params["dept_uuids"] = dept_uuids
 
     where = " AND ".join(conditions)
+    base_from = (
+        "FROM helpdesk.tickets t "
+        "LEFT JOIN helpdesk.categories c ON c.id = t.category_id"
+    )
 
     count_row = await db.execute(
-        text(f"SELECT COUNT(*) FROM helpdesk.tickets WHERE {where}"),  # noqa: S608
+        text(f"SELECT COUNT(*) {base_from} WHERE {where}"),  # noqa: S608
         params,
     )
     total = int(count_row.scalar() or 0)
 
     rows = await db.execute(
         text(
-            f"SELECT id, number, title, status, priority, requester_id, assignee_id, tags, "  # noqa: S608
-            f"       created_at, updated_at "
-            f"FROM helpdesk.tickets WHERE {where} "
+            f"SELECT t.id, t.number, t.title, t.status, t.priority, "  # noqa: S608
+            f"       t.requester_id, t.assignee_id, t.tags, "
+            f"       t.resolution_due_at, t.first_response_at, t.resolved_at, "
+            f"       t.created_at, t.updated_at, "
+            f"       c.slug AS category_slug, c.name AS category_name "
+            f"{base_from} WHERE {where} "
             f"ORDER BY "
-            f"  CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 "
-            f"                WHEN 'normal' THEN 2 ELSE 3 END, "
-            f"  created_at DESC "
+            f"  CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 "
+            f"                  WHEN 'normal' THEN 2 ELSE 3 END, "
+            f"  t.created_at DESC "
             f"LIMIT :limit OFFSET :offset"
         ),
         params,
@@ -313,9 +403,14 @@ async def list_tickets(
             title=str(r.title),
             status=str(r.status),
             priority=str(r.priority),
+            category_slug=str(r.category_slug) if r.category_slug else None,
+            category_name=str(r.category_name) if r.category_name else None,
             requester_id=str(r.requester_id),
             assignee_id=str(r.assignee_id) if r.assignee_id else None,
             tags=list(r.tags) if r.tags else [],
+            resolution_due_at=r.resolution_due_at,
+            first_response_at=r.first_response_at,
+            resolved_at=r.resolved_at,
             created_at=r.created_at,
             updated_at=r.updated_at,
         )
@@ -339,8 +434,12 @@ async def _fetch_ticket(
             "SELECT t.id, t.number, t.title, t.summary, t.status, t.priority, "  # noqa: S608
             "       t.category_id, t.requester_id, t.assignee_id, t.conversation_id, "
             "       t.tags, t.created_at, t.updated_at, "
+            "       t.first_response_due_at, t.resolution_due_at, "
+            "       t.first_response_at, t.resolved_at, "
+            "       c.slug AS category_slug, c.name AS category_name, "
             "       tm.body AS transcript "
             "FROM helpdesk.tickets t "
+            "LEFT JOIN helpdesk.categories c ON c.id = t.category_id "
             "LEFT JOIN helpdesk.ticket_messages tm "
             "  ON tm.ticket_id = t.id AND tm.author_role = 'system' "
             "WHERE t.id = CAST(:tid AS uuid) "
@@ -366,12 +465,18 @@ async def _fetch_ticket(
         status=str(r.status),
         priority=str(r.priority),
         category_id=str(r.category_id) if r.category_id else None,
+        category_name=str(r.category_name) if r.category_name else None,
+        category_slug=str(r.category_slug) if r.category_slug else None,
         requester_id=str(r.requester_id),
         requester_name=None,
         requester_login=None,
         assignee_id=str(r.assignee_id) if r.assignee_id else None,
         conversation_id=str(r.conversation_id) if r.conversation_id else None,
         tags=list(r.tags) if r.tags else [],
+        first_response_due_at=r.first_response_due_at,
+        resolution_due_at=r.resolution_due_at,
+        first_response_at=r.first_response_at,
+        resolved_at=r.resolved_at,
         created_at=r.created_at,
         updated_at=r.updated_at,
         transcript=str(r.transcript) if r.transcript else None,
@@ -634,6 +739,60 @@ async def assign_ticket(
     )
     await db.commit()
     log.info("ticket.assigned", ticket_id=tid, assignee=body.assignee_id,
+             actor=current_user.user_id)
+
+    return await _fetch_ticket(ticket_id, current_user, db)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tickets/{ticket_id}/category — change category (IT only)
+# ---------------------------------------------------------------------------
+
+@router.patch("/{ticket_id}/category", response_model=TicketOut)
+async def update_category(
+    ticket_id: uuid.UUID,
+    body: CategoryUpdateIn,
+    request: Request,
+    current_user: UserOut = Depends(_csrf_then_user),
+    db: AsyncSession = Depends(get_db),
+) -> TicketOut:
+    if not _is_agent(current_user):
+        raise ForbiddenError("Acesso restrito à equipe de TI")
+
+    tid = str(ticket_id)
+
+    # Resolve slug → uuid
+    new_cat_id: str | None = None
+    if body.category_slug:
+        cat_row = await db.execute(
+            text(
+                "SELECT id FROM helpdesk.categories "  # noqa: S608
+                "WHERE slug = :slug AND is_active = true LIMIT 1"
+            ),
+            {"slug": body.category_slug},
+        )
+        cat = cat_row.fetchone()
+        if cat is None:
+            raise NotFoundError(f"Categoria '{body.category_slug}' não encontrada")
+        new_cat_id = str(cat.id)
+
+    exists = await db.execute(
+        text("SELECT id FROM helpdesk.tickets WHERE id = CAST(:tid AS uuid)"),  # noqa: S608
+        {"tid": tid},
+    )
+    if exists.fetchone() is None:
+        raise NotFoundError("Ticket não encontrado")
+
+    cat_cast = "CAST(:cat_id AS uuid)" if new_cat_id else "NULL"
+    await db.execute(
+        text(
+            f"UPDATE helpdesk.tickets SET category_id = {cat_cast}, updated_at = NOW() "  # noqa: S608
+            f"WHERE id = CAST(:tid AS uuid)"
+        ),
+        {"cat_id": new_cat_id, "tid": tid},
+    )
+    await db.commit()
+    log.info("ticket.category_changed", ticket_id=tid, category=body.category_slug,
              actor=current_user.user_id)
 
     return await _fetch_ticket(ticket_id, current_user, db)

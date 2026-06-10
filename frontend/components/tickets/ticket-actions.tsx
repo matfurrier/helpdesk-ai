@@ -7,8 +7,12 @@ import { fetchCsrfToken } from "@/lib/sse";
 interface TicketMessageOut {
   id: string; author_id: string; author_role: string; visibility: string; body: string; created_at: string;
 }
+interface Category {
+  id: string; slug: string; name: string;
+}
 interface Props {
   ticketId: string; currentStatus: string; assigneeId: string | null;
+  categorySlug: string | null; categories: Category[];
   currentUserId: string; isAgent: boolean; initialMessages: TicketMessageOut[];
 }
 
@@ -42,9 +46,10 @@ function getCsrf() {
   return document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
 }
 
-export function TicketActions({ ticketId, currentStatus, assigneeId, currentUserId, isAgent, initialMessages }: Props) {
+export function TicketActions({ ticketId, currentStatus, assigneeId, categorySlug, categories, currentUserId, isAgent, initialMessages }: Props) {
   const [status, setStatus] = useState(currentStatus);
   const [assignee, setAssignee] = useState(assigneeId);
+  const [catSlug, setCatSlug] = useState(categorySlug);
   const [messages, setMessages] = useState<TicketMessageOut[]>(initialMessages);
   const [body, setBody] = useState("");
   const [visibility, setVisibility] = useState<"public" | "internal">("public");
@@ -74,6 +79,17 @@ export function TicketActions({ ticketId, currentStatus, assigneeId, currentUser
       const newAssignee = isMine ? null : currentUserId;
       await api.patch(`/api/v1/tickets/${ticketId}/assign`, { assignee_id: newAssignee }, { headers: { "X-CSRF-Token": csrf } });
       setAssignee(newAssignee);
+    });
+  }
+
+  function handleCategoryChange(slug: string) {
+    void withCsrf(async (csrf) => {
+      await api.patch(
+        `/api/v1/tickets/${ticketId}/category`,
+        { category_slug: slug || null },
+        { headers: { "X-CSRF-Token": csrf } },
+      );
+      setCatSlug(slug || null);
     });
   }
 
@@ -115,6 +131,22 @@ export function TicketActions({ ticketId, currentStatus, assigneeId, currentUser
             <p className="text-[11px] text-zinc-500">
               Atribuído: <span className="text-zinc-400 font-mono">{isMine ? "mim" : assignee.slice(0, 8) + "…"}</span>
             </p>
+          )}
+          {categories.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-zinc-500">Categoria:</span>
+              <select
+                value={catSlug ?? ""}
+                onChange={(e) => handleCategoryChange(e.target.value)}
+                disabled={loading}
+                className="bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500/50 disabled:opacity-40"
+              >
+                <option value="">Sem categoria</option>
+                {categories.map((c) => (
+                  <option key={c.slug} value={c.slug}>{c.name}</option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
       )}

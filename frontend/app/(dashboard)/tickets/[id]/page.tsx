@@ -6,14 +6,19 @@ import { TicketActions } from "@/components/tickets/ticket-actions";
 interface TicketOut {
   id: string; number: number; ticket_number: string; title: string; summary: string;
   status: string; priority: string; category_id: string | null;
+  category_name: string | null; category_slug: string | null;
   requester_id: string; requester_name: string | null;
   assignee_id: string | null; conversation_id: string | null;
-  tags: string[]; created_at: string; updated_at: string; transcript: string | null;
+  tags: string[];
+  first_response_due_at: string | null; resolution_due_at: string | null;
+  first_response_at: string | null; resolved_at: string | null;
+  created_at: string; updated_at: string; transcript: string | null;
 }
 interface TicketMessageOut {
   id: string; author_id: string; author_role: string; visibility: string; body: string; created_at: string;
 }
 interface UserOut { user_id: string; name: string; email: string; role: string; }
+interface Category { id: string; slug: string; name: string; }
 
 const IT_ROLES = new Set(["it_agent", "it_lead", "it_admin"]);
 const TZ = "America/Sao_Paulo";
@@ -29,6 +34,32 @@ async function serverFetch<T>(path: string, session: { name: string; value: stri
     if (!res.ok) throw new Error(`${res.status}`);
     return res.json() as Promise<T>;
   } catch { return null; }
+}
+
+const TERMINAL_STATUSES = new Set(["RESOLVED", "CLOSED", "AUTO_RESOLVED", "CANCELLED"]);
+
+function getSlaInfo(ticket: TicketOut): { label: string; cls: string; detail: string } | null {
+  if (!ticket.resolution_due_at) return null;
+  const due = new Date(ticket.resolution_due_at);
+  if (TERMINAL_STATUSES.has(ticket.status) && ticket.resolved_at) {
+    const breached = new Date(ticket.resolved_at) > due;
+    return breached
+      ? { label: "SLA violado", cls: "bg-red-500/15 text-red-400 ring-1 ring-red-500/30", detail: `Prazo era ${fmtDt(ticket.resolution_due_at)}` }
+      : { label: "SLA cumprido", cls: "bg-green-500/15 text-green-400 ring-1 ring-green-500/30", detail: `Resolvido antes de ${fmtDt(ticket.resolution_due_at)}` };
+  }
+  const now = Date.now();
+  const duems = due.getTime();
+  if (now > duems) {
+    const overMins = Math.floor((now - duems) / 60000);
+    const overLabel = overMins < 60 ? `${overMins}min` : `${Math.floor(overMins / 60)}h`;
+    return { label: `Vencido há ${overLabel}`, cls: "bg-red-500/15 text-red-400 ring-1 ring-red-500/30", detail: `Prazo: ${fmtDt(ticket.resolution_due_at)}` };
+  }
+  const remainMins = Math.floor((duems - now) / 60000);
+  const remainLabel = remainMins < 60 ? `${remainMins}min restantes` : `${Math.floor(remainMins / 60)}h restantes`;
+  const cls = remainMins <= 120
+    ? "bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30"
+    : "bg-green-500/15 text-green-400 ring-1 ring-green-500/30";
+  return { label: remainLabel, cls, detail: `Prazo: ${fmtDt(ticket.resolution_due_at)}` };
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -59,16 +90,18 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   const session = cookieStore.get("sds_session") ?? cookieStore.get("__Host-sds_session");
   if (!session) notFound();
 
-  const [ticket, user, messages] = await Promise.all([
+  const [ticket, user, messages, categories] = await Promise.all([
     serverFetch<TicketOut>(`/api/v1/tickets/${id}`, session),
     serverFetch<UserOut>("/api/v1/auth/me", session),
     serverFetch<TicketMessageOut[]>(`/api/v1/tickets/${id}/messages`, session),
+    serverFetch<Category[]>("/api/v1/tickets/categories", session),
   ]);
   if (!ticket || !user) notFound();
 
   const isAgent = IT_ROLES.has(user.role);
   const threadMessages = (messages ?? []).filter((m) => m.author_role !== "system");
   const requesterDisplay = ticket.requester_name ?? ticket.requester_id.slice(0, 8) + "…";
+  const slaInfo = getSlaInfo(ticket);
 
   return (
     <div className="p-5 max-w-3xl space-y-4">
@@ -84,6 +117,16 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${PRIORITY_COLOR[ticket.priority] ?? ""}`}>
                 {ticket.priority}
               </span>
+              {ticket.category_name && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-700/60 text-zinc-300">
+                  {ticket.category_name}
+                </span>
+              )}
+              {slaInfo && (
+                <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${slaInfo.cls}`} title={slaInfo.detail}>
+                  SLA: {slaInfo.label}
+                </span>
+              )}
             </div>
             <h1 className="text-base font-semibold text-zinc-100 leading-snug">{ticket.title}</h1>
             <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[11px] text-zinc-500">
@@ -117,6 +160,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         ticketId={ticket.id}
         currentStatus={ticket.status}
         assigneeId={ticket.assignee_id}
+        categorySlug={ticket.category_slug}
+        categories={categories ?? []}
         currentUserId={user.user_id}
         isAgent={isAgent}
         initialMessages={threadMessages}

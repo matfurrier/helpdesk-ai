@@ -11,11 +11,16 @@ interface TicketListItem {
   title: string;
   status: string;
   priority: string;
+  category_slug: string | null;
+  category_name: string | null;
   requester_id: string;
   requester_name: string | null;
   assignee_id: string | null;
   assignee_name: string | null;
   tags: string[];
+  resolution_due_at: string | null;
+  first_response_at: string | null;
+  resolved_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -29,6 +34,7 @@ interface FilterOptionsOut {
   years: number[];
   departments: { id: number; name: string }[];
   users: { id: string; name: string }[];
+  categories: { id: string; slug: string; name: string }[];
 }
 
 const TZ = "America/Sao_Paulo";
@@ -53,12 +59,36 @@ const PRIORITY_CHIP: Record<string, string> = {
   low:    "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30",
 };
 
+const TERMINAL_STATUSES = new Set(["RESOLVED", "CLOSED", "AUTO_RESOLVED", "CANCELLED"]);
+
+function slaChip(t: TicketListItem): { label: string; cls: string } | null {
+  if (!t.resolution_due_at) return null;
+  if (TERMINAL_STATUSES.has(t.status)) {
+    if (!t.resolved_at) return null;
+    const breached = new Date(t.resolved_at) > new Date(t.resolution_due_at);
+    return breached
+      ? { label: "SLA violado", cls: "bg-red-500/15 text-red-400 ring-1 ring-red-500/30" }
+      : { label: "No prazo", cls: "bg-green-500/15 text-green-400 ring-1 ring-green-500/30" };
+  }
+  const due = new Date(t.resolution_due_at).getTime();
+  const now = Date.now();
+  if (now > due) return { label: "Vencido", cls: "bg-red-500/15 text-red-400 ring-1 ring-red-500/30" };
+  const remainMins = Math.floor((due - now) / 60000);
+  if (remainMins < 60) return { label: `${remainMins}min`, cls: "bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30" };
+  const remainHrs = Math.floor(remainMins / 60);
+  const cls = remainHrs <= 2
+    ? "bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30"
+    : "bg-green-500/15 text-green-400 ring-1 ring-green-500/30";
+  return { label: `${remainHrs}h`, cls };
+}
+
 function buildFilterQuery(sp: Record<string, string | string[] | undefined>) {
   const p = new URLSearchParams();
   if (sp.year) p.set("year", String(sp.year));
   if (sp.month) p.set("month", String(sp.month));
   if (sp.dept_id) p.set("dept_id", String(sp.dept_id));
   if (sp.user_id) p.set("user_id", String(sp.user_id));
+  if (sp.category_slug) p.set("category_slug", String(sp.category_slug));
   const qs = p.toString();
   return qs ? `?${qs}` : "";
 }
@@ -130,13 +160,17 @@ export default async function TicketsPage({
                   <th className="text-left px-4 py-2.5 font-medium">Chamado</th>
                   <th className="text-left px-3 py-2.5 font-medium hidden sm:table-cell">Status</th>
                   <th className="text-left px-3 py-2.5 font-medium">Prioridade</th>
+                  <th className="text-left px-3 py-2.5 font-medium hidden xl:table-cell">Categoria</th>
+                  <th className="text-left px-3 py-2.5 font-medium hidden lg:table-cell">SLA</th>
                   <th className="text-left px-3 py-2.5 font-medium hidden lg:table-cell">Responsável</th>
                   <th className="text-left px-3 py-2.5 font-medium hidden md:table-cell">Criado</th>
                   <th className="w-8"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
-                {items.map((t) => (
+                {items.map((t) => {
+                  const sla = slaChip(t);
+                  return (
                   <tr key={t.id} className="hover:bg-zinc-800/30 transition-colors">
                     <td className="px-4 py-2.5">
                       <p className="font-mono text-[11px] text-zinc-500">{t.ticket_number}</p>
@@ -156,6 +190,24 @@ export default async function TicketsPage({
                         {t.priority}
                       </span>
                     </td>
+                    <td className="px-3 py-2.5 hidden xl:table-cell">
+                      {t.category_name ? (
+                        <span className="text-[11px] text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded">
+                          {t.category_name}
+                        </span>
+                      ) : (
+                        <span className="text-zinc-700">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 hidden lg:table-cell">
+                      {sla ? (
+                        <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${sla.cls}`}>
+                          {sla.label}
+                        </span>
+                      ) : (
+                        <span className="text-zinc-700">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2.5 hidden lg:table-cell">
                       <span className="text-xs text-zinc-500">
                         {t.assignee_name ?? (t.assignee_id ? t.assignee_id.slice(0, 8) + "…" : <span className="text-zinc-700">—</span>)}
@@ -168,7 +220,8 @@ export default async function TicketsPage({
                       <a href={`/tickets/${t.id}`} className="text-xs text-blue-400 hover:text-blue-300">→</a>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

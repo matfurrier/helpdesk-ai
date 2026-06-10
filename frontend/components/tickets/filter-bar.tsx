@@ -13,10 +13,17 @@ interface FilterUser {
   name: string;
 }
 
+interface FilterCategory {
+  id: string;
+  slug: string;
+  name: string;
+}
+
 interface FilterOptionsOut {
   years: number[];
   departments: FilterDept[];
   users: FilterUser[];
+  categories?: FilterCategory[];
 }
 
 interface Props {
@@ -47,6 +54,7 @@ export function FilterBar({ options }: Props) {
   const month = searchParams.get("month") ?? "";
   const deptId = searchParams.get("dept_id") ?? "";
   const userId = searchParams.get("user_id") ?? "";
+  const categorySlug = searchParams.get("category_slug") ?? "";
 
   const update = useCallback(
     (key: string, value: string) => {
@@ -62,7 +70,7 @@ export function FilterBar({ options }: Props) {
     router.push(pathname);
   }, [router, pathname]);
 
-  const hasFilters = year || month || deptId || userId;
+  const hasFilters = year || month || deptId || userId || categorySlug;
 
   const selectCls =
     "bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500/50 min-w-[120px]";
@@ -120,6 +128,21 @@ export function FilterBar({ options }: Props) {
           </option>
         ))}
       </select>
+
+      {(options.categories ?? []).length > 0 && (
+        <select
+          value={categorySlug}
+          onChange={(e) => update("category_slug", e.target.value)}
+          className={selectCls}
+        >
+          <option value="">Todas as categorias</option>
+          {(options.categories ?? []).map((c) => (
+            <option key={c.slug} value={c.slug}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      )}
 
       {hasFilters && (
         <button

@@ -458,15 +458,39 @@ async def convert_conversation(
     ticket_id_str: str | None = None
     ticket_number: int | None = None
 
-    # a) Create ticket (conversation_id set immediately — avoids second UPDATE)
+    # a) Fetch SLA deadlines based on priority
+    sla_row = await db.execute(
+        text(
+            "SELECT first_response_hours, resolution_hours "  # noqa: S608
+            "FROM helpdesk.sla_matrix WHERE priority = :priority LIMIT 1"
+        ),
+        {"priority": priority},
+    )
+    sla = sla_row.fetchone()
+
+    # b) Create ticket (conversation_id set immediately — avoids second UPDATE)
     cat_cast = "CAST(:cat_id AS uuid)" if category_id else "NULL"
+    sla_cols = ""
+    sla_vals = ""
+    sla_params: dict[str, object] = {}
+    if sla:
+        sla_cols = ", first_response_due_at, resolution_due_at"
+        sla_vals = (
+            ", NOW() + (:fr_hours || ' hours')::interval"
+            ", NOW() + (:res_hours || ' hours')::interval"
+        )
+        sla_params = {
+            "fr_hours": int(sla.first_response_hours),
+            "res_hours": int(sla.resolution_hours),
+        }
+
     ticket_result = await db.execute(
         text(
             f"INSERT INTO helpdesk.tickets "  # noqa: S608
             f"(title, summary, status, priority, category_id, requester_id, "
-            f"conversation_id, tags) "
+            f"conversation_id, tags{sla_cols}) "
             f"VALUES (:title, :summary, 'NEW', :priority, {cat_cast}, :requester_id, "
-            f"CAST(:conv_id AS uuid), :tags) "
+            f"CAST(:conv_id AS uuid), :tags{sla_vals}) "
             f"RETURNING id, number"
         ),
         {
@@ -477,6 +501,7 @@ async def convert_conversation(
             "requester_id": current_user.user_id,
             "conv_id": conv_id,
             "tags": draft.tags[:6],
+            **sla_params,
         },
     )
     ticket_row = ticket_result.fetchone()

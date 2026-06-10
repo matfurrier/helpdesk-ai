@@ -11,6 +11,7 @@ interface FilterOptionsOut {
   years: number[];
   departments: { id: number; name: string }[];
   users: { id: string; name: string }[];
+  categories?: { id: string; slug: string; name: string }[];
 }
 
 const IT_ROLES = new Set(["it_agent", "it_lead", "it_admin"]);

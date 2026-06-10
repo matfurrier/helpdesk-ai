@@ -52,6 +52,7 @@ export default function AdminSlaPage() {
     finally { setLoading(false); }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void load(); }, []);
 
   function startEdit(entry: SlaEntry) {

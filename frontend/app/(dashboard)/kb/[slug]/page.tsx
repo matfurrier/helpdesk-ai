@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { buildApiUrl } from "@/lib/api";
@@ -81,9 +82,9 @@ export default async function KbArticlePage({ params }: { params: Promise<{ slug
         </ReactMarkdown>
       </div>
 
-      <a href="/kb" className="inline-block text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+      <Link href="/kb" className="inline-block text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
         ← Voltar para KB
-      </a>
+      </Link>
     </div>
   );
 }

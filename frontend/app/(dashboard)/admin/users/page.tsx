@@ -45,6 +45,7 @@ export default function AdminUsersPage() {
     finally { setLoading(false); }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void load(); }, []);
 
   async function handleGrant(uuid: string, role: string) {

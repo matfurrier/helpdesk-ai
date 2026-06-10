@@ -84,7 +84,9 @@ class KbArticleUpdate(BaseModel):
     def _validate_trust(cls, v: object) -> object:
         if v is None:
             return None
-        _TRUST = frozenset({"internal_published", "internal_draft", "internal_only", "external_doc"})
+        _TRUST = frozenset(
+            {"internal_published", "internal_draft", "internal_only", "external_doc"}
+        )
         if v not in _TRUST:
             raise ValueError(f"trust_level must be one of {sorted(_TRUST)}")
         return v
@@ -262,7 +264,7 @@ async def update_kb_article(
         set_clause = ", ".join(f"{k} = :{k}" for k in updates)
         updates["slug"] = slug
         await db.execute(
-            text(f"UPDATE helpdesk.kb_articles SET {set_clause} WHERE slug = :slug"),
+            text(f"UPDATE helpdesk.kb_articles SET {set_clause} WHERE slug = :slug"),  # noqa: S608
             updates,
         )
 
@@ -274,7 +276,12 @@ async def update_kb_article(
                 "(article_id, version, body_markdown, edited_by) "
                 "VALUES (CAST(:aid AS uuid), :version, :body, :edited_by)"
             ),
-            {"aid": article_id, "version": new_version, "body": body.body_markdown, "edited_by": current_user.user_id},
+            {
+                "aid": article_id,
+                "version": new_version,
+                "body": body.body_markdown,
+                "edited_by": current_user.user_id,
+            },
         )
         needs_reingest = True
 
@@ -313,7 +320,10 @@ async def restore_kb_article(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     res = await db.execute(
-        text("UPDATE helpdesk.kb_articles SET is_archived = false WHERE slug = :slug RETURNING id::text AS aid"),
+        text(
+            "UPDATE helpdesk.kb_articles SET is_archived = false "
+            "WHERE slug = :slug RETURNING id::text AS aid"
+        ),
         {"slug": slug},
     )
     row = res.fetchone()
@@ -429,7 +439,7 @@ async def update_category(
     set_clause = ", ".join(f"{k} = :{k}" for k in updates)
     updates["cat_id"] = category_id
     res = await db.execute(
-        text(
+        text(  # noqa: S608
             f"UPDATE helpdesk.categories SET {set_clause} "
             f"WHERE id = CAST(:cat_id AS uuid) "
             f"RETURNING id::text, slug, name, description, sort_order, is_active"
@@ -496,7 +506,12 @@ async def upsert_role_override(
         {"uuid": user_uuid, "role": body.role, "granted_by": current_user.user_id},
     )
     await db.commit()
-    log.info("admin.role_override.upserted", target_uuid=user_uuid, role=body.role, granted_by=current_user.user_id)
+    log.info(
+        "admin.role_override.upserted",
+        target_uuid=user_uuid,
+        role=body.role,
+        granted_by=current_user.user_id,
+    )
     return RoleOverrideOut(user_uuid=user_uuid, role=body.role)
 
 
@@ -602,7 +617,9 @@ async def list_sla_admin(
         text(
             "SELECT priority, first_response_hours, resolution_hours, description "
             "FROM helpdesk.sla_matrix "
-            "ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END"
+            "ORDER BY CASE priority"
+            " WHEN 'urgent' THEN 1 WHEN 'high' THEN 2"
+            " WHEN 'normal' THEN 3 ELSE 4 END"
         )
     )
     return [

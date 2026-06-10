@@ -48,6 +48,7 @@ export default function AiMonitorPage() {
     finally { setLoading(false); }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void load(page); }, [page]);
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 1;

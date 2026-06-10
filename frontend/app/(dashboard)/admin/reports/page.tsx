@@ -53,6 +53,7 @@ export default function AdminReportsPage() {
     finally { setLoading(false); }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void loadCsat(); }, []);
 
   async function handleExportCsv() {

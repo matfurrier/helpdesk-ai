@@ -47,6 +47,7 @@ export default function AdminCategoriesPage() {
     finally { setLoading(false); }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void load(); }, []);
 
   async function handleToggle(cat: Category) {

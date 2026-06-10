@@ -54,6 +54,7 @@ export default function AdminKbPage() {
     finally { setLoading(false); }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void load(); }, []);
 
   async function handleArchive(slug: string) {

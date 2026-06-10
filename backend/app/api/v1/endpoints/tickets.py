@@ -256,9 +256,7 @@ async def list_agents(
     except Exception:  # noqa: BLE001, S110
         pass
 
-    all_uids = list(
-        set(override_uids + dept_uids + list(settings.bootstrap_admin_uuid_set))
-    )
+    all_uids = list(set(override_uids + dept_uids + list(settings.bootstrap_admin_uuid_set)))
     if not all_uids:
         return []
 

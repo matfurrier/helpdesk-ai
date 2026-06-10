@@ -1,4 +1,5 @@
 """Unit tests for ClamAV INSTREAM scanner (no daemon required — mocked socket)."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch

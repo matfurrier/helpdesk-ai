@@ -1,4 +1,5 @@
 """Unit tests for MinIO storage helpers (Minio client mocked)."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch

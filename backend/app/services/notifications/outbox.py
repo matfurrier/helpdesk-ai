@@ -66,10 +66,11 @@ async def _process_batch(db: AsyncSession) -> int:
             payload: dict[str, object] = (
                 row.payload if isinstance(row.payload, dict) else json.loads(row.payload)
             )
-            to = payload.get("to", [])
+            to_raw = payload.get("to", [])
+            to = list(to_raw) if isinstance(to_raw, list) else []
             subject = str(payload.get("subject", ""))
             body_html = str(payload.get("body_html", ""))
-            ok = await send_email(to=list(to), subject=subject, body_html=body_html)  # type: ignore[arg-type]
+            ok = await send_email(to=to, subject=subject, body_html=body_html)
             new_status = "sent" if ok else "failed"
             await db.execute(
                 text(

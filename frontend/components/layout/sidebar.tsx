@@ -21,7 +21,7 @@ const IT_ROLES = new Set(["it_agent", "it_lead", "it_admin"]);
 export function Sidebar({ role, userName }: Props) {
   const pathname = usePathname();
   const router = useRouter();
-  const items = IT_ROLES.has(role) ? [...NAV, ADMIN_NAV] : NAV.slice(0, 2);
+  const items = IT_ROLES.has(role) ? [...NAV, ADMIN_NAV] : NAV;
 
   async function handleLogout() {
     try {

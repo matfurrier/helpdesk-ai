@@ -794,7 +794,8 @@ async def report_csat(
 
     rows = await db.execute(
         text(
-            f"SELECT t.ticket_number, t.title, us.rating, us.comment, "  # noqa: S608
+            f"SELECT 'HD-' || LPAD(t.number::text, 6, '0') AS ticket_number, "  # noqa: S608
+            f"       t.title, us.rating, us.comment, "
             f"       us.responded_at::text, t.resolved_at::text AS closed_at "
             f"FROM helpdesk.user_satisfaction us "
             f"JOIN helpdesk.tickets t ON t.id = us.ticket_id "

@@ -8,8 +8,15 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 TicketStatus = Literal[
-    "NEW", "TRIAGE", "IN_PROGRESS", "WAITING_USER",
-    "RESOLVED", "CLOSED", "AUTO_RESOLVED", "CANCELLED", "REOPENED",
+    "NEW",
+    "TRIAGE",
+    "IN_PROGRESS",
+    "WAITING_USER",
+    "RESOLVED",
+    "CLOSED",
+    "AUTO_RESOLVED",
+    "CANCELLED",
+    "REOPENED",
 ]
 
 

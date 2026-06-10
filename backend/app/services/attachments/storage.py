@@ -55,6 +55,7 @@ async def put(data: bytes, ticket_id: str, original_name: str, mime_type: str) -
 
 async def presigned_url(key: str, expires_seconds: int = 900) -> str:
     """Return a presigned GET URL valid for *expires_seconds* seconds."""
+
     def _presign() -> str:
         return _client().presigned_get_object(
             settings.minio_bucket,

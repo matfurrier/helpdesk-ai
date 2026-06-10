@@ -25,21 +25,23 @@ router = APIRouter(prefix="/tickets", tags=["attachments"])
 
 _MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 
-_ALLOWED_MIME: frozenset[str] = frozenset({
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/vnd.ms-powerpoint",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    "text/plain",
-    "text/csv",
-    "image/jpeg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-})
+_ALLOWED_MIME: frozenset[str] = frozenset(
+    {
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "text/plain",
+        "text/csv",
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+    }
+)
 
 _IT_ROLES: frozenset[str] = frozenset({"it_agent", "it_lead", "it_admin"})
 
@@ -53,9 +55,7 @@ class AttachmentOut(BaseModel):
     created_at: str
 
 
-async def _assert_ticket_access(
-    ticket_id: str, user: UserOut, db: AsyncSession
-) -> None:
+async def _assert_ticket_access(ticket_id: str, user: UserOut, db: AsyncSession) -> None:
     res = await db.execute(
         text(
             "SELECT requester_id FROM helpdesk.tickets "  # noqa: S608

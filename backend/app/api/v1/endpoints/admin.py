@@ -54,6 +54,7 @@ async def _it_user(request: Request, response: Response) -> UserOut:
 # KB ADMIN — CRUD + re-ingest
 # ===========================================================================
 
+
 class KbArticleAdminItem(BaseModel):
     model_config = ConfigDict(strict=False)
 
@@ -339,6 +340,7 @@ async def restore_kb_article(
 # CATEGORIES ADMIN
 # ===========================================================================
 
+
 class CategoryAdminOut(BaseModel):
     model_config = ConfigDict(strict=False)
 
@@ -383,8 +385,12 @@ async def list_categories_admin(
     )
     return [
         CategoryAdminOut(
-            id=r.id, slug=r.slug, name=r.name, description=r.description,
-            sort_order=int(r.sort_order), is_active=bool(r.is_active),
+            id=r.id,
+            slug=r.slug,
+            name=r.name,
+            description=r.description,
+            sort_order=int(r.sort_order),
+            is_active=bool(r.is_active),
         )
         for r in rows.fetchall()
     ]
@@ -411,8 +417,12 @@ async def create_category(
     await db.commit()
     log.info("admin.category.created", slug=body.slug, user_id=current_user.user_id)
     return CategoryAdminOut(
-        id=r.id, slug=r.slug, name=r.name, description=r.description,
-        sort_order=int(r.sort_order), is_active=bool(r.is_active),
+        id=r.id,
+        slug=r.slug,
+        name=r.name,
+        description=r.description,
+        sort_order=int(r.sort_order),
+        is_active=bool(r.is_active),
     )
 
 
@@ -452,8 +462,12 @@ async def update_category(
     await db.commit()
     log.info("admin.category.updated", category_id=category_id, user_id=current_user.user_id)
     return CategoryAdminOut(
-        id=r.id, slug=r.slug, name=r.name, description=r.description,
-        sort_order=int(r.sort_order), is_active=bool(r.is_active),
+        id=r.id,
+        slug=r.slug,
+        name=r.name,
+        description=r.description,
+        sort_order=int(r.sort_order),
+        is_active=bool(r.is_active),
     )
 
 
@@ -537,6 +551,7 @@ async def delete_role_override(
 # USERS ADMIN — list users with role overrides
 # ===========================================================================
 
+
 class UserAdminOut(BaseModel):
     model_config = ConfigDict(strict=False)
 
@@ -582,6 +597,7 @@ async def list_users_admin(
 # ===========================================================================
 # SLA ADMIN
 # ===========================================================================
+
 
 class SlaUpdate(BaseModel):
     model_config = ConfigDict(strict=True)
@@ -670,6 +686,7 @@ async def update_sla(
 # REPORTS
 # ===========================================================================
 
+
 @router.get("/reports/tickets")
 async def export_tickets_csv(
     request: Request,
@@ -704,19 +721,39 @@ async def export_tickets_csv(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow([
-        "Número", "Título", "Status", "Prioridade", "Categoria",
-        "Solicitante (UUID)", "Responsável (UUID)",
-        "Criado em", "Resolvido em", "1ª Resposta em",
-        "Prazo 1ª Resposta", "Prazo Resolução",
-    ])
+    writer.writerow(
+        [
+            "Número",
+            "Título",
+            "Status",
+            "Prioridade",
+            "Categoria",
+            "Solicitante (UUID)",
+            "Responsável (UUID)",
+            "Criado em",
+            "Resolvido em",
+            "1ª Resposta em",
+            "Prazo 1ª Resposta",
+            "Prazo Resolução",
+        ]
+    )
     for r in records:
-        writer.writerow([
-            r.ticket_number, r.title, r.status, r.priority, r.category or "",
-            r.requester_id or "", r.assignee_id or "",
-            r.created_at or "", r.resolved_at or "", r.first_response_at or "",
-            r.first_response_due_at or "", r.resolution_due_at or "",
-        ])
+        writer.writerow(
+            [
+                r.ticket_number,
+                r.title,
+                r.status,
+                r.priority,
+                r.category or "",
+                r.requester_id or "",
+                r.assignee_id or "",
+                r.created_at or "",
+                r.resolved_at or "",
+                r.first_response_at or "",
+                r.first_response_due_at or "",
+                r.resolution_due_at or "",
+            ]
+        )
 
     buf.seek(0)
     return StreamingResponse(
@@ -781,6 +818,7 @@ async def report_csat(
 # ===========================================================================
 # AI MONITOR
 # ===========================================================================
+
 
 class AiCallLogItem(BaseModel):
     model_config = ConfigDict(strict=False)
@@ -856,6 +894,7 @@ async def ai_monitor(
 # PUBLIC KB READ — any authenticated user
 # ===========================================================================
 
+
 class KbArticleItem(BaseModel):
     model_config = ConfigDict(strict=False)
 
@@ -889,7 +928,9 @@ async def list_kb_articles(
     )
     return [
         KbArticleItem(
-            id=r.id, slug=r.slug, title=r.title,
+            id=r.id,
+            slug=r.slug,
+            title=r.title,
             tags=list(r.tags) if r.tags else [],
             trust_level=str(r.trust_level),
             created_at=r.created_at,
@@ -921,7 +962,9 @@ async def get_kb_article(
     if r is None:
         raise NotFoundError("Artigo não encontrado")
     return KbArticleDetail(
-        id=r.id, slug=r.slug, title=r.title,
+        id=r.id,
+        slug=r.slug,
+        title=r.title,
         tags=list(r.tags) if r.tags else [],
         trust_level=str(r.trust_level),
         created_at=r.created_at,

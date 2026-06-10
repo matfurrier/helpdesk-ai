@@ -48,6 +48,7 @@ _IT_ROLES = frozenset({"it_agent", "it_lead", "it_admin"})
 # GET /tickets/categories — list active categories (authenticated)
 # ---------------------------------------------------------------------------
 
+
 @router.get("/categories", response_model=list[CategoryOut])
 async def list_categories(
     current_user: UserOut = Depends(get_current_user),
@@ -76,6 +77,7 @@ async def list_categories(
 # GET /tickets/sla — SLA matrix (authenticated)
 # ---------------------------------------------------------------------------
 
+
 @router.get("/sla", response_model=list[SlaMatrixOut])
 async def list_sla(
     current_user: UserOut = Depends(get_current_user),
@@ -99,19 +101,20 @@ async def list_sla(
         for r in rows.fetchall()
     ]
 
+
 _ACTIVE_STATUSES = ("NEW", "TRIAGE", "IN_PROGRESS", "WAITING_USER", "REOPENED")
 
 # Status transitions allowed for IT agents
 _TRANSITIONS: dict[str, list[str]] = {
-    "NEW":          ["TRIAGE", "IN_PROGRESS", "CANCELLED"],
-    "TRIAGE":       ["IN_PROGRESS", "WAITING_USER", "RESOLVED", "CANCELLED"],
-    "IN_PROGRESS":  ["WAITING_USER", "RESOLVED", "CANCELLED"],
+    "NEW": ["TRIAGE", "IN_PROGRESS", "CANCELLED"],
+    "TRIAGE": ["IN_PROGRESS", "WAITING_USER", "RESOLVED", "CANCELLED"],
+    "IN_PROGRESS": ["WAITING_USER", "RESOLVED", "CANCELLED"],
     "WAITING_USER": ["IN_PROGRESS", "RESOLVED", "CLOSED"],
-    "RESOLVED":     ["CLOSED", "REOPENED"],
-    "CLOSED":       ["REOPENED"],
-    "REOPENED":     ["IN_PROGRESS", "WAITING_USER", "RESOLVED", "CANCELLED"],
-    "AUTO_RESOLVED":["CLOSED", "REOPENED"],
-    "CANCELLED":    ["REOPENED"],
+    "RESOLVED": ["CLOSED", "REOPENED"],
+    "CLOSED": ["REOPENED"],
+    "REOPENED": ["IN_PROGRESS", "WAITING_USER", "RESOLVED", "CANCELLED"],
+    "AUTO_RESOLVED": ["CLOSED", "REOPENED"],
+    "CANCELLED": ["REOPENED"],
 }
 
 
@@ -134,6 +137,7 @@ def _is_agent(user: UserOut) -> bool:
 # ---------------------------------------------------------------------------
 # GET /tickets/filter-options — filter metadata (IT only, before /stats)
 # ---------------------------------------------------------------------------
+
 
 @router.get("/filter-options")
 async def get_filter_options(
@@ -220,6 +224,7 @@ async def get_filter_options(
 # Helper — resolve dept UUIDs via security DB
 # ---------------------------------------------------------------------------
 
+
 async def _resolve_dept_uuids(dept_id: int, sec_db: AsyncSession) -> list[str]:
     """Retorna todos os UUIDs de usuários de um departamento (security DB)."""
     try:
@@ -235,6 +240,7 @@ async def _resolve_dept_uuids(dept_id: int, sec_db: AsyncSession) -> list[str]:
 # ---------------------------------------------------------------------------
 # GET /tickets/stats — KPIs (IT only, must be before /{ticket_id})
 # ---------------------------------------------------------------------------
+
 
 @router.get("/stats", response_model=TicketStatsOut)
 async def get_ticket_stats(
@@ -331,6 +337,7 @@ async def get_ticket_stats(
 # GET /tickets/ — list
 # ---------------------------------------------------------------------------
 
+
 @router.get("/", response_model=TicketListOut)
 async def list_tickets(
     status: Annotated[str | None, Query()] = None,
@@ -391,10 +398,7 @@ async def list_tickets(
             params["dept_uuids"] = dept_uuids
 
     where = " AND ".join(conditions)
-    base_from = (
-        "FROM helpdesk.tickets t "
-        "LEFT JOIN helpdesk.categories c ON c.id = t.category_id"
-    )
+    base_from = "FROM helpdesk.tickets t LEFT JOIN helpdesk.categories c ON c.id = t.category_id"
 
     count_row = await db.execute(
         text(f"SELECT COUNT(*) {base_from} WHERE {where}"),  # noqa: S608
@@ -422,14 +426,9 @@ async def list_tickets(
     raw = rows.fetchall()
 
     # Batch-lookup names from security DB for all unique user IDs
-    all_uids: list[str] = list({
-        str(r.requester_id)
-        for r in raw
-    } | {
-        str(r.assignee_id)
-        for r in raw
-        if r.assignee_id
-    })
+    all_uids: list[str] = list(
+        {str(r.requester_id) for r in raw} | {str(r.assignee_id) for r in raw if r.assignee_id}
+    )
     name_map: dict[str, str] = {}
     if all_uids:
         try:
@@ -445,6 +444,7 @@ async def list_tickets(
             pass  # names stay empty on security-DB error
 
     from app.schemas.tickets import TicketListItem  # local to avoid circular
+
     items = [
         TicketListItem(
             id=str(r.id),
@@ -474,6 +474,7 @@ async def list_tickets(
 # ---------------------------------------------------------------------------
 # Private helper — fetch ticket row without requester name lookup
 # ---------------------------------------------------------------------------
+
 
 async def _fetch_ticket(
     ticket_id: uuid.UUID,
@@ -539,6 +540,7 @@ async def _fetch_ticket(
 # GET /tickets/{ticket_id} — single ticket (with requester name lookup)
 # ---------------------------------------------------------------------------
 
+
 @router.get("/{ticket_id}", response_model=TicketOut)
 async def get_ticket(
     ticket_id: uuid.UUID,
@@ -570,11 +572,13 @@ async def get_ticket(
             if ticket.assignee_id
             else (None, None)
         )
-        ticket = ticket.model_copy(update={
-            "requester_name": req_info[0],
-            "requester_login": req_info[1],
-            "assignee_name": assign_info[0],
-        })
+        ticket = ticket.model_copy(
+            update={
+                "requester_name": req_info[0],
+                "requester_login": req_info[1],
+                "assignee_name": assign_info[0],
+            }
+        )
     except Exception:  # noqa: BLE001, S110
         pass  # fallback: names stay None
 
@@ -584,6 +588,7 @@ async def get_ticket(
 # ---------------------------------------------------------------------------
 # GET /tickets/{ticket_id}/messages
 # ---------------------------------------------------------------------------
+
 
 @router.get("/{ticket_id}/messages", response_model=list[TicketMessageOut])
 async def list_messages(
@@ -631,6 +636,7 @@ async def list_messages(
 # ---------------------------------------------------------------------------
 # POST /tickets/{ticket_id}/messages — add reply or internal note
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{ticket_id}/messages", status_code=201, response_model=TicketMessageOut)
 async def add_message(
@@ -691,8 +697,12 @@ async def add_message(
         )
 
     await db.commit()
-    log.info("ticket.message_added", ticket_id=tid, author=current_user.user_id,
-             visibility=body.visibility)
+    log.info(
+        "ticket.message_added",
+        ticket_id=tid,
+        author=current_user.user_id,
+        visibility=body.visibility,
+    )
 
     # Fire-and-forget email notification (only for public messages)
     if body.visibility == "public":
@@ -720,6 +730,7 @@ async def add_message(
 # PATCH /tickets/{ticket_id}/status — change status (IT only)
 # ---------------------------------------------------------------------------
 
+
 @router.patch("/{ticket_id}/status", response_model=TicketOut)
 async def update_status(
     ticket_id: uuid.UUID,
@@ -744,9 +755,7 @@ async def update_status(
     new_status = body.status
     allowed = _TRANSITIONS.get(current_status, [])
     if new_status not in allowed:
-        raise ForbiddenError(
-            f"Transição {current_status} → {new_status} não permitida"
-        )
+        raise ForbiddenError(f"Transição {current_status} → {new_status} não permitida")
 
     ts_fields = ""
     if new_status in ("RESOLVED", "AUTO_RESOLVED"):
@@ -777,8 +786,13 @@ async def update_status(
         },
     )
     await db.commit()
-    log.info("ticket.status_changed", ticket_id=tid, from_s=current_status,
-             to_s=new_status, actor=current_user.user_id)
+    log.info(
+        "ticket.status_changed",
+        ticket_id=tid,
+        from_s=current_status,
+        to_s=new_status,
+        actor=current_user.user_id,
+    )
 
     # Fetch ticket info for notification (number + title + requester)
     info_row = await db.execute(
@@ -807,6 +821,7 @@ async def update_status(
 # PATCH /tickets/{ticket_id}/assign — assign / unassign (IT only)
 # ---------------------------------------------------------------------------
 
+
 @router.patch("/{ticket_id}/assign", response_model=TicketOut)
 async def assign_ticket(
     ticket_id: uuid.UUID,
@@ -834,8 +849,9 @@ async def assign_ticket(
         {"assignee": body.assignee_id, "tid": tid},
     )
     await db.commit()
-    log.info("ticket.assigned", ticket_id=tid, assignee=body.assignee_id,
-             actor=current_user.user_id)
+    log.info(
+        "ticket.assigned", ticket_id=tid, assignee=body.assignee_id, actor=current_user.user_id
+    )
 
     if body.assignee_id:
         info_row = await db.execute(
@@ -862,6 +878,7 @@ async def assign_ticket(
 # ---------------------------------------------------------------------------
 # PATCH /tickets/{ticket_id}/category — change category (IT only)
 # ---------------------------------------------------------------------------
+
 
 @router.patch("/{ticket_id}/category", response_model=TicketOut)
 async def update_category(
@@ -907,7 +924,11 @@ async def update_category(
         {"cat_id": new_cat_id, "tid": tid},
     )
     await db.commit()
-    log.info("ticket.category_changed", ticket_id=tid, category=body.category_slug,
-             actor=current_user.user_id)
+    log.info(
+        "ticket.category_changed",
+        ticket_id=tid,
+        category=body.category_slug,
+        actor=current_user.user_id,
+    )
 
     return await _fetch_ticket(ticket_id, current_user, db)

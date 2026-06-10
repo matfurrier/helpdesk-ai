@@ -167,7 +167,7 @@ async def get_filter_options(
                     "       d.name AS departmentname "
                     "FROM public.users u "
                     "LEFT JOIN public.department d ON d.id = u.departmentid "
-                    "WHERE u.uuid = ANY(:uuids::uuid[])"
+                    "WHERE u.uuid::text = ANY(:uuids)"
                 ),
                 {"uuids": uuids},
             )

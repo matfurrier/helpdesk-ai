@@ -163,13 +163,16 @@ async def get_filter_options(
         try:
             sec_r = await sec_db.execute(
                 text(
-                    "SELECT uuid::text, name, departmentid, departmentname "  # noqa: S608
-                    "FROM public.users WHERE uuid = ANY(:uuids)"
+                    "SELECT u.uuid::text, u.name, u.login, u.departmentid, "  # noqa: S608
+                    "       d.name AS departmentname "
+                    "FROM public.users u "
+                    "LEFT JOIN public.department d ON d.id = u.departmentid "
+                    "WHERE u.uuid = ANY(:uuids::uuid[])"
                 ),
                 {"uuids": uuids},
             )
             for u in sec_r.fetchall():
-                users.append({"id": str(u.uuid), "name": str(u.name or u.uuid)})
+                users.append({"id": str(u.uuid), "name": str(u.name or u.login or u.uuid)})
                 if u.departmentid is not None:
                     departments[int(u.departmentid)] = str(
                         u.departmentname or f"Dept {u.departmentid}"

@@ -25,6 +25,9 @@ pnpm-lock.yaml
 # Docker volumes
 *.log
 
+# Claude Code internal files
+.claude/worktrees/
+
 # IDE
 .idea/
 .vscode/

@@ -90,11 +90,11 @@ function EmployeeDashboard({ user }: { user: UserOut }) {
           <h2 className="text-sm font-semibold text-zinc-200 group-hover:text-white">Abrir chamado</h2>
           <p className="text-xs text-zinc-500 mt-1">Descreva seu problema e a IA vai te ajudar</p>
         </a>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-5">
+        <a href="/tickets" className="bg-zinc-900 border border-zinc-800 hover:border-zinc-600 rounded-lg p-5 transition-colors group">
           <div className="text-2xl mb-2">📋</div>
-          <h2 className="text-sm font-semibold text-zinc-200">Meus chamados</h2>
+          <h2 className="text-sm font-semibold text-zinc-200 group-hover:text-white">Meus chamados</h2>
           <p className="text-xs text-zinc-500 mt-1">Acompanhe o status dos seus tickets</p>
-        </div>
+        </a>
       </div>
     </div>
   );

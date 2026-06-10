@@ -64,6 +64,7 @@ async def _call_openai[T: BaseModel](
         model=settings.openai_model,
         messages=messages,  # type: ignore[arg-type]
         response_format=schema_type,
+        max_tokens=512,
     )
     parsed = response.choices[0].message.parsed
     if parsed is None:
@@ -170,6 +171,7 @@ def _build_messages(
     prompt_body: str,
     clean_input: str,
     context_blocks: list[dict[str, object]] | None,
+    history: list[dict[str, str]] | None = None,
 ) -> list[dict[str, str]]:
     msgs: list[dict[str, str]] = [{"role": "system", "content": prompt_body}]
     if context_blocks:
@@ -178,6 +180,8 @@ def _build_messages(
             for b in context_blocks
         )
         msgs.append({"role": "system", "content": ctx_text})
+    if history:
+        msgs.extend(history)
     msgs.append({"role": "user", "content": clean_input})
     return msgs
 
@@ -195,6 +199,7 @@ class LLMOrchestrator:
         *,
         prompt_key: str,
         user_input: str,
+        history: list[dict[str, str]] | None = None,
         context_blocks: list[dict[str, object]] | None = None,
         schema: type[_T] = TriageOutput,  # type: ignore[assignment]
         user_id: str | None = None,
@@ -210,7 +215,7 @@ class LLMOrchestrator:
             await self._token_map.store(conversation_id, pii_map)
 
         prompt_version, prompt_sha256, prompt_body = await _fetch_prompt(prompt_key, db)
-        messages = _build_messages(prompt_body, clean_input, context_blocks)
+        messages = _build_messages(prompt_body, clean_input, context_blocks, history)
 
         provider = "openai"
         model = settings.openai_model

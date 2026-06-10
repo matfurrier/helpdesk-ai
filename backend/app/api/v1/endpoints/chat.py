@@ -236,9 +236,25 @@ async def send_message(
     rag_chunks = await _retriever.retrieve(body.content, db)
     context_blocks = _retriever.chunks_to_context_blocks(rag_chunks)
 
+    # Fetch prior turns so the LLM has conversation context
+    hist_r = await db.execute(
+        text(
+            "SELECT role, COALESCE(content_redacted, content) AS content "  # noqa: S608
+            "FROM helpdesk.ai_conversation_messages "
+            "WHERE conversation_id = CAST(:cid AS uuid) "
+            "ORDER BY created_at ASC LIMIT 20"
+        ),
+        {"cid": conv_id},
+    )
+    history = [
+        {"role": "user" if r.role == "user" else "assistant", "content": str(r.content)}
+        for r in hist_r.fetchall()
+    ] or None
+
     result: TriageOutput = await orch.complete(
         prompt_key="TRIAGE_SYSTEM",
         user_input=body.content,
+        history=history,
         context_blocks=context_blocks or None,
         user_id=current_user.user_id,
         conversation_id=conv_id,

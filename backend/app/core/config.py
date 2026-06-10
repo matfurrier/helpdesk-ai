@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     mail_from: str = ""
     it_team_email: str = "ti@desangosse.com.br"
     frontend_url: str = "http://localhost:8081"
+    cors_origins: str = "http://localhost:3004,http://localhost:8081"
 
     # --- PII / token_map ---
     pii_map_ttl_seconds: int = 86400

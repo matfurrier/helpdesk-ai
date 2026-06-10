@@ -59,6 +59,13 @@ class ConvertOut(BaseModel):
     status: str
 
 
+class AgentOut(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    id: str
+    name: str
+
+
 class TicketOut(BaseModel):
     model_config = ConfigDict(strict=True)
 
@@ -86,6 +93,8 @@ class TicketOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     transcript: str | None = None
+    csat_rating: float | None = None
+    csat_responded_at: datetime | None = None
 
 
 class TicketListItem(BaseModel):
@@ -109,6 +118,7 @@ class TicketListItem(BaseModel):
     resolved_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    csat_rating: float | None = None
 
 
 class TicketListOut(BaseModel):

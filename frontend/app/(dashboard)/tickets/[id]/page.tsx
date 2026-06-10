@@ -13,6 +13,7 @@ interface TicketOut {
   first_response_due_at: string | null; resolution_due_at: string | null;
   first_response_at: string | null; resolved_at: string | null;
   created_at: string; updated_at: string; transcript: string | null;
+  csat_rating: number | null; csat_responded_at: string | null;
 }
 interface TicketMessageOut {
   id: string; author_id: string; author_role: string; visibility: string; body: string; created_at: string;
@@ -127,6 +128,11 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
                   SLA: {slaInfo.label}
                 </span>
               )}
+              {ticket.csat_rating !== null && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30" title="Avaliação do usuário">
+                  ★ {ticket.csat_rating.toFixed(1)}
+                </span>
+              )}
             </div>
             <h1 className="text-base font-semibold text-zinc-100 leading-snug">{ticket.title}</h1>
             <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-[11px] text-zinc-500">
@@ -163,11 +169,14 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         ticketId={ticket.id}
         currentStatus={ticket.status}
         assigneeId={ticket.assignee_id}
+        assigneeName={ticket.assignee_name ?? null}
         categorySlug={ticket.category_slug}
         categories={categories ?? []}
         currentUserId={user.user_id}
         isAgent={isAgent}
         initialMessages={threadMessages}
+        csatRating={ticket.csat_rating}
+        csatRespondedAt={ticket.csat_responded_at}
       />
 
       {/* Transcript (agents only, collapsible) */}

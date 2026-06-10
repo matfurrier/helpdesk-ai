@@ -14,10 +14,15 @@ interface AttachmentOut {
 interface Category {
   id: string; slug: string; name: string;
 }
+interface AgentOut { id: string; name: string; }
+
 interface Props {
   ticketId: string; currentStatus: string; assigneeId: string | null;
+  assigneeName: string | null;
   categorySlug: string | null; categories: Category[];
   currentUserId: string; isAgent: boolean; initialMessages: TicketMessageOut[];
+  csatRating: number | null;
+  csatRespondedAt: string | null;
 }
 
 const NEXT_STATUSES: Record<string, { label: string; value: string; cls: string }[]> = {
@@ -61,14 +66,16 @@ function getCsrf() {
 }
 
 export function TicketActions({
-  ticketId, currentStatus, assigneeId, categorySlug, categories,
+  ticketId, currentStatus, assigneeId, assigneeName, categorySlug, categories,
   currentUserId, isAgent, initialMessages,
+  csatRating, csatRespondedAt,
 }: Props) {
   const [status, setStatus] = useState(currentStatus);
   const [assignee, setAssignee] = useState(assigneeId);
   const [catSlug, setCatSlug] = useState(categorySlug);
   const [messages, setMessages] = useState<TicketMessageOut[]>(initialMessages);
   const [attachments, setAttachments] = useState<AttachmentOut[]>([]);
+  const [agents, setAgents] = useState<AgentOut[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [body, setBody] = useState("");
   const [visibility, setVisibility] = useState<"public" | "internal">("public");
@@ -80,6 +87,16 @@ export function TicketActions({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void loadAttachments(); }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isAgent) void loadAgents(); }, [isAgent]);
+
+  async function loadAgents() {
+    try {
+      const res = await fetch("/api/v1/tickets/agents");
+      if (res.ok) setAgents(await res.json() as AgentOut[]);
+    } catch { /* silent */ }
+  }
+
   async function loadAttachments() {
     try {
       const res = await fetch(`/api/v1/tickets/${ticketId}/attachments`);
@@ -87,8 +104,8 @@ export function TicketActions({
     } catch { /* silent */ }
   }
 
-  const isMine = assignee === currentUserId;
-  const nextStatuses = NEXT_STATUSES[status] ?? [];
+  const csatLocked = status === "CLOSED" && csatRespondedAt !== null;
+  const nextStatuses = csatLocked ? [] : (NEXT_STATUSES[status] ?? []);
   const terminal = ["CLOSED", "CANCELLED"].includes(status);
   const canSend = !terminal && (body.trim().length > 0 || pendingFiles.length > 0);
 
@@ -106,11 +123,10 @@ export function TicketActions({
     });
   }
 
-  function handleAssign() {
+  function handleAssignTo(userId: string | null) {
     void withCsrf(async (csrf) => {
-      const newAssignee = isMine ? null : currentUserId;
-      await api.patch(`/api/v1/tickets/${ticketId}/assign`, { assignee_id: newAssignee }, { headers: { "X-CSRF-Token": csrf } });
-      setAssignee(newAssignee);
+      await api.patch(`/api/v1/tickets/${ticketId}/assign`, { assignee_id: userId }, { headers: { "X-CSRF-Token": csrf } });
+      setAssignee(userId);
     });
   }
 
@@ -185,42 +201,60 @@ export function TicketActions({
       {/* IT controls */}
       {isAgent && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2 flex-wrap">
-              {nextStatuses.map((s) => (
-                <button key={s.value} onClick={() => handleStatusChange(s.value)} disabled={loading}
-                  className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors disabled:opacity-40 ${s.cls}`}>
-                  {s.label}
-                </button>
-              ))}
+          {csatLocked ? (
+            <div className="flex items-center gap-2 text-[11px] text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded-md px-3 py-2">
+              <span>{"★".repeat(Math.round(csatRating ?? 0))}{"☆".repeat(5 - Math.round(csatRating ?? 0))}</span>
+              <span>
+                Avaliação: <strong>{(csatRating ?? 0).toFixed(1)}/5</strong> — chamado encerrado definitivamente
+              </span>
             </div>
-            {!terminal && (
-              <button onClick={handleAssign} disabled={loading}
-                className="text-xs px-3 py-1.5 bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors disabled:opacity-40">
-                {isMine ? "Liberar" : "Assumir"}
-              </button>
-            )}
-          </div>
-          {assignee && (
-            <p className="text-[11px] text-zinc-500">
-              Atribuído: <span className="text-zinc-400 font-mono">{isMine ? "mim" : assignee.slice(0, 8) + "…"}</span>
-            </p>
-          )}
-          {categories.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-zinc-500">Categoria:</span>
-              <select
-                value={catSlug ?? ""}
-                onChange={(e) => handleCategoryChange(e.target.value)}
-                disabled={loading}
-                className="bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500/50 disabled:opacity-40"
-              >
-                <option value="">Sem categoria</option>
-                {categories.map((c) => (
-                  <option key={c.slug} value={c.slug}>{c.name}</option>
-                ))}
-              </select>
-            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {nextStatuses.map((s) => (
+                    <button key={s.value} onClick={() => handleStatusChange(s.value)} disabled={loading}
+                      className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors disabled:opacity-40 ${s.cls}`}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+                {!terminal && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-zinc-500">Responsável:</span>
+                    <select
+                      value={assignee ?? ""}
+                      onChange={(e) => handleAssignTo(e.target.value || null)}
+                      disabled={loading}
+                      className="bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500/50 disabled:opacity-40"
+                    >
+                      <option value="">Sem responsável</option>
+                      {agents.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.id === currentUserId ? `${a.name} (eu)` : a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              {categories.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-zinc-500">Categoria:</span>
+                  <select
+                    value={catSlug ?? ""}
+                    onChange={(e) => handleCategoryChange(e.target.value)}
+                    disabled={loading}
+                    className="bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500/50 disabled:opacity-40"
+                  >
+                    <option value="">Sem categoria</option>
+                    {categories.map((c) => (
+                      <option key={c.slug} value={c.slug}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

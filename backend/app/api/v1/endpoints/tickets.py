@@ -21,11 +21,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.auth import get_current_user
+from app.core.config import settings
 from app.core.errors import ForbiddenError, NotFoundError
 from app.db.session import get_db, get_security_db
 from app.schemas.auth import UserOut
 from app.schemas.tickets import (
     AddMessageIn,
+    AgentOut,
     AssignUpdateIn,
     CategoryOut,
     CategoryUpdateIn,
@@ -221,6 +223,66 @@ async def get_filter_options(
 
 
 # ---------------------------------------------------------------------------
+# GET /tickets/agents — IT staff available for assignment (IT only)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/agents", response_model=list[AgentOut])
+async def list_agents(
+    current_user: UserOut = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
+) -> list[AgentOut]:
+    if not _is_agent(current_user):
+        raise ForbiddenError("Acesso restrito à equipe de TI")
+
+    # UUIDs with explicit role overrides (it_admin, it_lead)
+    override_rows = await db.execute(
+        text("SELECT user_uuid::text AS uid FROM helpdesk.role_overrides")  # noqa: S608
+    )
+    override_uids = [str(r.uid) for r in override_rows.fetchall()]
+
+    # UUIDs from IT department in security DB
+    dept_uids: list[str] = []
+    try:
+        dept_rows = await sec_db.execute(
+            text(
+                f"SELECT uuid::text AS uid FROM {settings.security_schema}.users "  # noqa: S608
+                "WHERE departmentid = :dept_id"
+            ),
+            {"dept_id": settings.it_department_id},
+        )
+        dept_uids = [str(r.uid) for r in dept_rows.fetchall()]
+    except Exception:  # noqa: BLE001
+        pass
+
+    all_uids = list(
+        set(override_uids + dept_uids + list(settings.bootstrap_admin_uuid_set))
+    )
+    if not all_uids:
+        return []
+
+    agents: list[AgentOut] = []
+    try:
+        name_rows = await sec_db.execute(
+            text(
+                f"SELECT uuid::text AS uid, name, login "  # noqa: S608
+                f"FROM {settings.security_schema}.users "
+                "WHERE uuid::text = ANY(:uids)"
+            ),
+            {"uids": all_uids},
+        )
+        agents = [
+            AgentOut(id=str(nr.uid), name=str(nr.name or nr.login or nr.uid))
+            for nr in name_rows.fetchall()
+        ]
+    except Exception:  # noqa: BLE001
+        pass
+
+    return sorted(agents, key=lambda a: a.name)
+
+
+# ---------------------------------------------------------------------------
 # Helper — resolve dept UUIDs via security DB
 # ---------------------------------------------------------------------------
 
@@ -398,7 +460,11 @@ async def list_tickets(
             params["dept_uuids"] = dept_uuids
 
     where = " AND ".join(conditions)
-    base_from = "FROM helpdesk.tickets t LEFT JOIN helpdesk.categories c ON c.id = t.category_id"
+    base_from = (
+        "FROM helpdesk.tickets t "
+        "LEFT JOIN helpdesk.categories c ON c.id = t.category_id "
+        "LEFT JOIN helpdesk.user_satisfaction us ON us.ticket_id = t.id"
+    )
 
     count_row = await db.execute(
         text(f"SELECT COUNT(*) {base_from} WHERE {where}"),  # noqa: S608
@@ -412,7 +478,8 @@ async def list_tickets(
             f"       t.requester_id, t.assignee_id, t.tags, "
             f"       t.resolution_due_at, t.first_response_at, t.resolved_at, "
             f"       t.created_at, t.updated_at, "
-            f"       c.slug AS category_slug, c.name AS category_name "
+            f"       c.slug AS category_slug, c.name AS category_name, "
+            f"       us.rating AS csat_rating "
             f"{base_from} WHERE {where} "
             f"ORDER BY "
             f"  CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 "
@@ -465,6 +532,7 @@ async def list_tickets(
             resolved_at=r.resolved_at,
             created_at=r.created_at,
             updated_at=r.updated_at,
+            csat_rating=float(r.csat_rating) if r.csat_rating is not None else None,
         )
         for r in raw
     ]
@@ -490,11 +558,13 @@ async def _fetch_ticket(
             "       t.first_response_due_at, t.resolution_due_at, "
             "       t.first_response_at, t.resolved_at, "
             "       c.slug AS category_slug, c.name AS category_name, "
-            "       tm.body AS transcript "
+            "       tm.body AS transcript, "
+            "       us.rating AS csat_rating, us.responded_at AS csat_responded_at "
             "FROM helpdesk.tickets t "
             "LEFT JOIN helpdesk.categories c ON c.id = t.category_id "
             "LEFT JOIN helpdesk.ticket_messages tm "
             "  ON tm.ticket_id = t.id AND tm.author_role = 'system' "
+            "LEFT JOIN helpdesk.user_satisfaction us ON us.ticket_id = t.id "
             "WHERE t.id = CAST(:tid AS uuid) "
             "ORDER BY tm.created_at ASC "
             "LIMIT 1"
@@ -533,6 +603,8 @@ async def _fetch_ticket(
         created_at=r.created_at,
         updated_at=r.updated_at,
         transcript=str(r.transcript) if r.transcript else None,
+        csat_rating=float(r.csat_rating) if r.csat_rating is not None else None,
+        csat_responded_at=r.csat_responded_at,
     )
 
 
@@ -667,6 +739,18 @@ async def add_message(
     if not agent and str(ticket.requester_id) != current_user.user_id:
         raise ForbiddenError("Acesso negado")
 
+    # Block any message on a CSAT-evaluated ticket
+    if str(ticket.status) == "CLOSED":
+        csat_check = await db.execute(
+            text(
+                "SELECT 1 FROM helpdesk.user_satisfaction "  # noqa: S608
+                "WHERE ticket_id = CAST(:tid AS uuid) AND responded_at IS NOT NULL LIMIT 1"
+            ),
+            {"tid": tid},
+        )
+        if csat_check.fetchone() is not None:
+            raise ForbiddenError("Chamado já avaliado pelo usuário não pode ser alterado")
+
     author_role = "agent" if agent else "requester"
 
     msg_row = await db.execute(
@@ -756,6 +840,18 @@ async def update_status(
     allowed = _TRANSITIONS.get(current_status, [])
     if new_status not in allowed:
         raise ForbiddenError(f"Transição {current_status} → {new_status} não permitida")
+
+    # Block reopening a ticket that has already been CSAT-evaluated
+    if new_status == "REOPENED" and current_status == "CLOSED":
+        csat_check = await db.execute(
+            text(
+                "SELECT 1 FROM helpdesk.user_satisfaction "  # noqa: S608
+                "WHERE ticket_id = CAST(:tid AS uuid) AND responded_at IS NOT NULL LIMIT 1"
+            ),
+            {"tid": tid},
+        )
+        if csat_check.fetchone() is not None:
+            raise ForbiddenError("Chamado já avaliado pelo usuário não pode ser reaberto")
 
     ts_fields = ""
     if new_status in ("RESOLVED", "AUTO_RESOLVED"):

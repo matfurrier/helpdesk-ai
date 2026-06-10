@@ -23,6 +23,7 @@ interface TicketListItem {
   resolved_at: string | null;
   created_at: string;
   updated_at: string;
+  csat_rating: number | null;
 }
 
 interface TicketListOut {
@@ -177,6 +178,9 @@ export default async function TicketsPage({
                       <p className="text-xs font-medium text-zinc-200 truncate max-w-[240px] mt-0.5">{t.title}</p>
                       {t.requester_name && (
                         <p className="text-[11px] text-zinc-600 mt-0.5 truncate max-w-[240px]">{t.requester_name}</p>
+                      )}
+                      {t.csat_rating !== null && (
+                        <p className="text-[10px] text-amber-400 mt-0.5">★ {t.csat_rating.toFixed(1)}</p>
                       )}
                     </td>
                     <td className="px-3 py-2.5 hidden sm:table-cell">

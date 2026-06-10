@@ -30,6 +30,24 @@ interface Props {
   options: FilterOptionsOut;
 }
 
+const STATUSES = [
+  { value: "NEW", label: "Novo" },
+  { value: "TRIAGE", label: "Triagem" },
+  { value: "IN_PROGRESS", label: "Em andamento" },
+  { value: "WAITING_USER", label: "Aguardando usuário" },
+  { value: "RESOLVED", label: "Resolvido" },
+  { value: "CLOSED", label: "Fechado" },
+  { value: "REOPENED", label: "Reaberto" },
+  { value: "CANCELLED", label: "Cancelado" },
+];
+
+const PRIORITIES = [
+  { value: "urgent", label: "Urgente" },
+  { value: "high", label: "Alta" },
+  { value: "normal", label: "Normal" },
+  { value: "low", label: "Baixa" },
+];
+
 const MONTHS = [
   { value: 1, label: "Janeiro" },
   { value: 2, label: "Fevereiro" },
@@ -55,6 +73,8 @@ export function FilterBar({ options }: Props) {
   const deptId = searchParams.get("dept_id") ?? "";
   const userId = searchParams.get("user_id") ?? "";
   const categorySlug = searchParams.get("category_slug") ?? "";
+  const status = searchParams.get("status") ?? "";
+  const priority = searchParams.get("priority") ?? "";
 
   const update = useCallback(
     (key: string, value: string) => {
@@ -70,7 +90,7 @@ export function FilterBar({ options }: Props) {
     router.push(pathname);
   }, [router, pathname]);
 
-  const hasFilters = year || month || deptId || userId || categorySlug;
+  const hasFilters = year || month || deptId || userId || categorySlug || status || priority;
 
   const selectCls =
     "bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500/50 min-w-[120px]";
@@ -143,6 +163,32 @@ export function FilterBar({ options }: Props) {
           ))}
         </select>
       )}
+
+      <select
+        value={status}
+        onChange={(e) => update("status", e.target.value)}
+        className={selectCls}
+      >
+        <option value="">Todos os status</option>
+        {STATUSES.map((s) => (
+          <option key={s.value} value={s.value}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+
+      <select
+        value={priority}
+        onChange={(e) => update("priority", e.target.value)}
+        className={selectCls}
+      >
+        <option value="">Todas as prioridades</option>
+        {PRIORITIES.map((p) => (
+          <option key={p.value} value={p.value}>
+            {p.label}
+          </option>
+        ))}
+      </select>
 
       {hasFilters && (
         <button

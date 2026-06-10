@@ -37,6 +37,8 @@ function buildFilterQuery(sp: Record<string, string | string[] | undefined>) {
   if (sp.month) p.set("month", String(sp.month));
   if (sp.dept_id) p.set("dept_id", String(sp.dept_id));
   if (sp.user_id) p.set("user_id", String(sp.user_id));
+  if (sp.status) p.set("status", String(sp.status));
+  if (sp.priority) p.set("priority", String(sp.priority));
   const qs = p.toString();
   return qs ? `?${qs}` : "";
 }

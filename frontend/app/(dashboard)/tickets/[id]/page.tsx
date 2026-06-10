@@ -169,7 +169,6 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         ticketId={ticket.id}
         currentStatus={ticket.status}
         assigneeId={ticket.assignee_id}
-        assigneeName={ticket.assignee_name ?? null}
         categorySlug={ticket.category_slug}
         categories={categories ?? []}
         currentUserId={user.user_id}

@@ -18,7 +18,6 @@ interface AgentOut { id: string; name: string; }
 
 interface Props {
   ticketId: string; currentStatus: string; assigneeId: string | null;
-  assigneeName: string | null;
   categorySlug: string | null; categories: Category[];
   currentUserId: string; isAgent: boolean; initialMessages: TicketMessageOut[];
   csatRating: number | null;
@@ -66,7 +65,7 @@ function getCsrf() {
 }
 
 export function TicketActions({
-  ticketId, currentStatus, assigneeId, assigneeName, categorySlug, categories,
+  ticketId, currentStatus, assigneeId, categorySlug, categories,
   currentUserId, isAgent, initialMessages,
   csatRating, csatRespondedAt,
 }: Props) {
@@ -87,7 +86,6 @@ export function TicketActions({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void loadAttachments(); }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (isAgent) void loadAgents(); }, [isAgent]);
 
   async function loadAgents() {

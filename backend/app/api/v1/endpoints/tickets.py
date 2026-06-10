@@ -253,7 +253,7 @@ async def list_agents(
             {"dept_id": settings.it_department_id},
         )
         dept_uids = [str(r.uid) for r in dept_rows.fetchall()]
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110
         pass
 
     all_uids = list(
@@ -276,7 +276,7 @@ async def list_agents(
             AgentOut(id=str(nr.uid), name=str(nr.name or nr.login or nr.uid))
             for nr in name_rows.fetchall()
         ]
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110
         pass
 
     return sorted(agents, key=lambda a: a.name)

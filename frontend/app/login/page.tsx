@@ -53,7 +53,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} method="post" className="space-y-4">
           <div>
             <label className="text-sm font-medium" htmlFor="credential">
               E-mail ou login

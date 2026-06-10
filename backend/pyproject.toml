@@ -28,6 +28,7 @@ dependencies = [
     "openai>=1.40",
     "anthropic>=0.30",
     "cryptography>=42.0",
+    "aiosmtplib>=3.0",
 ]
 
 [project.optional-dependencies]

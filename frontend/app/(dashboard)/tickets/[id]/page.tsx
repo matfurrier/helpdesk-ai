@@ -8,7 +8,7 @@ interface TicketOut {
   status: string; priority: string; category_id: string | null;
   category_name: string | null; category_slug: string | null;
   requester_id: string; requester_name: string | null;
-  assignee_id: string | null; conversation_id: string | null;
+  assignee_id: string | null; assignee_name: string | null; conversation_id: string | null;
   tags: string[];
   first_response_due_at: string | null; resolution_due_at: string | null;
   first_response_at: string | null; resolved_at: string | null;
@@ -133,7 +133,10 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               <span>Solicitante: <span className="text-zinc-300">{requesterDisplay}</span></span>
               <span>Criado: <span className="text-zinc-300">{fmtDt(ticket.created_at)}</span></span>
               {isAgent && ticket.assignee_id && (
-                <span>Responsável: <span className="text-zinc-300 font-mono">{ticket.assignee_id.slice(0, 8)}…</span></span>
+                <span>Responsável: <span className="text-zinc-300">{ticket.assignee_name ?? "—"}</span></span>
+              )}
+              {isAgent && !ticket.assignee_id && (
+                <span className="text-zinc-600">Sem responsável</span>
               )}
             </div>
           </div>

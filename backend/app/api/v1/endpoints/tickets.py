@@ -11,6 +11,7 @@ PATCH /tickets/{ticket_id}/assign   → assign/unassign (IT only)
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Annotated
 
@@ -23,6 +24,7 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.core.errors import ForbiddenError, NotFoundError
 from app.db.session import get_db, get_security_db
 from app.schemas.auth import UserOut
+from app.services.notifications import hooks as _hooks
 from app.schemas.tickets import (
     AddMessageIn,
     AssignUpdateIn,
@@ -293,6 +295,24 @@ async def get_ticket_stats(
         params,
     )
     r = row.fetchone()
+
+    # CSAT stats — separate query to avoid breaking the primary stats aggregation
+    csat_conditions = [c for c in conditions if "assignee_id" not in c]
+    csat_where = " AND ".join(csat_conditions) if csat_conditions else "1=1"
+    csat_params = {k: v for k, v in params.items() if k not in ("active",)}
+    csat_row = await db.execute(
+        text(
+            f"SELECT "  # noqa: S608
+            f"  ROUND(AVG(us.rating)::numeric, 1) AS avg_rating, "
+            f"  COUNT(us.id) FILTER (WHERE us.responded_at IS NOT NULL) AS total_responses "
+            f"FROM helpdesk.user_satisfaction us "
+            f"JOIN helpdesk.tickets t ON t.id = us.ticket_id "
+            f"WHERE us.responded_at IS NOT NULL AND {csat_where}"
+        ),
+        csat_params,
+    )
+    cr = csat_row.fetchone()
+
     return TicketStatsOut(
         total_count=int(r.total_count or 0),
         open_count=int(r.open_count or 0),
@@ -302,6 +322,8 @@ async def get_ticket_stats(
         avg_first_response_minutes=(
             float(r.avg_first_response_minutes) if r.avg_first_response_minutes else None
         ),
+        csat_avg_rating=float(cr.avg_rating) if cr and cr.avg_rating else None,
+        csat_total_responses=int(cr.total_responses or 0) if cr else 0,
     )
 
 
@@ -397,6 +419,31 @@ async def list_tickets(
         params,
     )
 
+    raw = rows.fetchall()
+
+    # Batch-lookup names from security DB for all unique user IDs
+    all_uids: list[str] = list({
+        str(r.requester_id)
+        for r in raw
+    } | {
+        str(r.assignee_id)
+        for r in raw
+        if r.assignee_id
+    })
+    name_map: dict[str, str] = {}
+    if all_uids:
+        try:
+            name_rows = await sec_db.execute(
+                text(
+                    "SELECT uuid::text AS uid, name FROM public.users "  # noqa: S608
+                    "WHERE uuid::text = ANY(:uids)"
+                ),
+                {"uids": all_uids},
+            )
+            name_map = {str(nr.uid): str(nr.name) for nr in name_rows.fetchall() if nr.name}
+        except Exception:  # noqa: BLE001
+            pass  # names stay empty on security-DB error
+
     from app.schemas.tickets import TicketListItem  # local to avoid circular
     items = [
         TicketListItem(
@@ -409,7 +456,9 @@ async def list_tickets(
             category_slug=str(r.category_slug) if r.category_slug else None,
             category_name=str(r.category_name) if r.category_name else None,
             requester_id=str(r.requester_id),
+            requester_name=name_map.get(str(r.requester_id)),
             assignee_id=str(r.assignee_id) if r.assignee_id else None,
+            assignee_name=name_map.get(str(r.assignee_id)) if r.assignee_id else None,
             tags=list(r.tags) if r.tags else [],
             resolution_due_at=r.resolution_due_at,
             first_response_at=r.first_response_at,
@@ -417,7 +466,7 @@ async def list_tickets(
             created_at=r.created_at,
             updated_at=r.updated_at,
         )
-        for r in rows.fetchall()
+        for r in raw
     ]
     return TicketListOut(items=items, total=total)
 
@@ -499,23 +548,31 @@ async def get_ticket(
 ) -> TicketOut:
     ticket = await _fetch_ticket(ticket_id, current_user, db)
 
-    # Secondary lookup for requester display name (best-effort)
+    # Batch-lookup requester + assignee names from security DB (best-effort)
     try:
-        name_row = await sec_db.execute(
+        uids_to_lookup = [ticket.requester_id]
+        if ticket.assignee_id:
+            uids_to_lookup.append(ticket.assignee_id)
+        name_rows = await sec_db.execute(
             text(
-                "SELECT name, login FROM public.users "  # noqa: S608
-                "WHERE uuid = CAST(:uid AS uuid) LIMIT 1"
+                "SELECT uuid::text AS uid, name, login FROM public.users "  # noqa: S608
+                "WHERE uuid::text = ANY(:uids)"
             ),
-            {"uid": ticket.requester_id},
+            {"uids": uids_to_lookup},
         )
-        nr = name_row.fetchone()
-        if nr is not None:
-            ticket = ticket.model_copy(update={
-                "requester_name": str(nr.name) if nr.name else None,
-                "requester_login": str(nr.login) if nr.login else None,
-            })
+        uid_info: dict[str, tuple[str | None, str | None]] = {
+            str(nr.uid): (str(nr.name) if nr.name else None, str(nr.login) if nr.login else None)
+            for nr in name_rows.fetchall()
+        }
+        req_info = uid_info.get(ticket.requester_id, (None, None))
+        assign_info = uid_info.get(ticket.assignee_id or "", (None, None)) if ticket.assignee_id else (None, None)
+        ticket = ticket.model_copy(update={
+            "requester_name": req_info[0],
+            "requester_login": req_info[1],
+            "assignee_name": assign_info[0],
+        })
     except Exception:  # noqa: BLE001
-        pass  # fallback: requester_name stays None
+        pass  # fallback: names stay None
 
     return ticket
 
@@ -633,6 +690,18 @@ async def add_message(
     log.info("ticket.message_added", ticket_id=tid, author=current_user.user_id,
              visibility=body.visibility)
 
+    # Fire-and-forget email notification (only for public messages)
+    if body.visibility == "public":
+        asyncio.create_task(
+            _hooks.notify_new_message(
+                ticket_id=tid,
+                author_id=current_user.user_id,
+                author_name=current_user.name or current_user.user_id,
+                is_agent=agent,
+                message_body=body.body,
+            )
+        )
+
     return TicketMessageOut(
         id=str(msg.id),
         author_id=current_user.user_id,
@@ -707,6 +776,26 @@ async def update_status(
     log.info("ticket.status_changed", ticket_id=tid, from_s=current_status,
              to_s=new_status, actor=current_user.user_id)
 
+    # Fetch ticket info for notification (number + title + requester)
+    info_row = await db.execute(
+        text(
+            "SELECT number, title, requester_id FROM helpdesk.tickets "  # noqa: S608
+            "WHERE id = CAST(:tid AS uuid) LIMIT 1"
+        ),
+        {"tid": tid},
+    )
+    info = info_row.fetchone()
+    if info is not None:
+        asyncio.create_task(
+            _hooks.notify_status_changed(
+                ticket_id=tid,
+                new_status=new_status,
+                ticket_number=f"HD-{int(info.number):06d}",
+                title=str(info.title),
+                requester_id=str(info.requester_id),
+            )
+        )
+
     return await _fetch_ticket(ticket_id, current_user, db)
 
 
@@ -743,6 +832,25 @@ async def assign_ticket(
     await db.commit()
     log.info("ticket.assigned", ticket_id=tid, assignee=body.assignee_id,
              actor=current_user.user_id)
+
+    if body.assignee_id:
+        info_row = await db.execute(
+            text(
+                "SELECT number, title FROM helpdesk.tickets "  # noqa: S608
+                "WHERE id = CAST(:tid AS uuid) LIMIT 1"
+            ),
+            {"tid": tid},
+        )
+        info = info_row.fetchone()
+        if info is not None:
+            asyncio.create_task(
+                _hooks.notify_assigned(
+                    ticket_id=tid,
+                    assignee_id=body.assignee_id,
+                    ticket_number=f"HD-{int(info.number):06d}",
+                    title=str(info.title),
+                )
+            )
 
     return await _fetch_ticket(ticket_id, current_user, db)
 

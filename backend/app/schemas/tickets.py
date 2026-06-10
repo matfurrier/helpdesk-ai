@@ -69,6 +69,7 @@ class TicketOut(BaseModel):
     requester_name: str | None = None
     requester_login: str | None = None
     assignee_id: str | None = None
+    assignee_name: str | None = None
     conversation_id: str | None
     tags: list[str]
     first_response_due_at: datetime | None = None
@@ -92,7 +93,9 @@ class TicketListItem(BaseModel):
     category_slug: str | None = None
     category_name: str | None = None
     requester_id: str
+    requester_name: str | None = None
     assignee_id: str | None
+    assignee_name: str | None = None
     tags: list[str]
     resolution_due_at: datetime | None = None
     first_response_at: datetime | None = None
@@ -117,6 +120,8 @@ class TicketStatsOut(BaseModel):
     resolved_today: int
     unassigned_count: int
     avg_first_response_minutes: float | None
+    csat_avg_rating: float | None = None
+    csat_total_responses: int = 0
 
 
 class TicketMessageOut(BaseModel):

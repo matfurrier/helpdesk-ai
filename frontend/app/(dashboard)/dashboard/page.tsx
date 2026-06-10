@@ -4,8 +4,8 @@ import { buildApiUrl } from "@/lib/api";
 import { FilterBar } from "@/components/tickets/filter-bar";
 
 interface UserOut { user_id: string; name: string; email: string; role: string; }
-interface TicketStatsOut { total_count: number; open_count: number; pending_count: number; resolved_today: number; unassigned_count: number; avg_first_response_minutes: number | null; }
-interface TicketListItem { id: string; number: number; ticket_number: string; title: string; status: string; priority: string; requester_id: string; assignee_id: string | null; tags: string[]; created_at: string; updated_at: string; }
+interface TicketStatsOut { total_count: number; open_count: number; pending_count: number; resolved_today: number; unassigned_count: number; avg_first_response_minutes: number | null; csat_avg_rating: number | null; csat_total_responses: number; }
+interface TicketListItem { id: string; number: number; ticket_number: string; title: string; status: string; priority: string; requester_id: string; requester_name: string | null; assignee_id: string | null; assignee_name: string | null; tags: string[]; created_at: string; updated_at: string; }
 interface TicketListOut { items: TicketListItem[]; total: number; }
 interface FilterOptionsOut {
   years: number[];
@@ -68,6 +68,16 @@ function KpiCard({ label, value, sub }: { label: string; value: string | number;
   );
 }
 
+function StarRating({ value }: { value: number }) {
+  return (
+    <span className="inline-flex gap-0.5">
+      {[1, 2, 3, 4, 5].map((s) => (
+        <span key={s} className={s <= Math.round(value) ? "text-yellow-400" : "text-zinc-700"}>★</span>
+      ))}
+    </span>
+  );
+}
+
 // Employee dashboard (no sidebar duplication — layout handles that)
 function EmployeeDashboard({ user }: { user: UserOut }) {
   return (
@@ -116,7 +126,7 @@ function ItDashboard({
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <KpiCard label="Abertos" value={stats?.open_count ?? "—"} />
         <KpiCard label="Aguardando usuário" value={stats?.pending_count ?? "—"} />
         <KpiCard label="Resolvidos hoje" value={stats?.resolved_today ?? "—"} />
@@ -125,6 +135,24 @@ function ItDashboard({
           value={avgFRT}
           sub={stats?.unassigned_count ? `${stats.unassigned_count} sem dono` : undefined}
         />
+        {/* CSAT KPI */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3">
+          <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Satisfação (CSAT)</p>
+          {stats?.csat_avg_rating != null ? (
+            <>
+              <p className="text-2xl font-bold text-white mt-0.5">{stats.csat_avg_rating.toFixed(1)}</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <StarRating value={stats.csat_avg_rating} />
+                <span className="text-[11px] text-zinc-500">{stats.csat_total_responses} resp.</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-2xl font-bold text-white mt-0.5">—</p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">Sem avaliações</p>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Quick action */}
@@ -151,8 +179,9 @@ function ItDashboard({
                   <th className="text-left px-4 py-2 font-medium">Chamado</th>
                   <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Status</th>
                   <th className="text-left px-3 py-2 font-medium">Prioridade</th>
+                  <th className="text-left px-3 py-2 font-medium hidden md:table-cell">Solicitante</th>
                   <th className="text-left px-3 py-2 font-medium hidden lg:table-cell">Responsável</th>
-                  <th className="text-left px-3 py-2 font-medium hidden md:table-cell">Data</th>
+                  <th className="text-left px-3 py-2 font-medium hidden xl:table-cell">Data</th>
                   <th className="w-8"></th>
                 </tr>
               </thead>
@@ -174,12 +203,17 @@ function ItDashboard({
                         {t.priority}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 hidden lg:table-cell">
-                      <span className="text-xs text-zinc-500">
-                        {t.assignee_id ? t.assignee_id.slice(0, 8) + "…" : <span className="text-zinc-600">—</span>}
+                    <td className="px-3 py-2.5 hidden md:table-cell">
+                      <span className="text-xs text-zinc-400 truncate max-w-[120px] block">
+                        {t.requester_name ?? <span className="text-zinc-600">—</span>}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 hidden md:table-cell">
+                    <td className="px-3 py-2.5 hidden lg:table-cell">
+                      <span className="text-xs text-zinc-500 truncate max-w-[120px] block">
+                        {t.assignee_name ?? (t.assignee_id ? <span className="text-zinc-600">—</span> : <span className="text-zinc-700">Sem dono</span>)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 hidden xl:table-cell">
                       <span className="text-xs text-zinc-500">{fmtDate(t.created_at)}</span>
                     </td>
                     <td className="px-3 py-2.5">

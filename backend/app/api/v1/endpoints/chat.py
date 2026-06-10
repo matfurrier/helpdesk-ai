@@ -42,6 +42,7 @@ from app.schemas.chat import ConversationOut, MessageCreate, MessageOut, TriageO
 from app.schemas.tickets import ConvertOut, TicketDraftOutput
 from app.services.ai import redactor as _redactor
 from app.services.ai.orchestrator import LLMOrchestrator, get_orchestrator, orchestrator
+from app.services.notifications import hooks as _hooks
 from app.services.rag import retriever as _retriever
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -597,8 +598,22 @@ async def convert_conversation(
         priority=priority,
     )
 
+    # Fire-and-forget: notify IT team + requester confirmation
+    _ticket_number_fmt = f"HD-{ticket_number:06d}"
+    asyncio.create_task(
+        _hooks.notify_ticket_opened(
+            ticket_id=ticket_id_str,
+            ticket_number=_ticket_number_fmt,
+            title=draft.title[:200],
+            priority=priority,
+            category=draft.category_slug,
+            requester_id=current_user.user_id,
+            requester_email=current_user.email or None,
+        )
+    )
+
     return ConvertOut(
         ticket_id=ticket_id_str,
-        ticket_number=f"HD-{ticket_number:06d}",
+        ticket_number=_ticket_number_fmt,
         status="NEW",
     )

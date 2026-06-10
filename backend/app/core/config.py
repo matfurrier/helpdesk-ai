@@ -76,6 +76,15 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-haiku-4-5-20251001"
     ai_fallback_enabled: bool = False
 
+    # --- Email / SMTP ---
+    mail_host: str = "smtp.office365.com"
+    mail_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    mail_from: str = ""
+    it_team_email: str = "ti@desangosse.com.br"
+    frontend_url: str = "http://localhost:8081"
+
     # --- PII / token_map ---
     pii_map_ttl_seconds: int = 86400
 

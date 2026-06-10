@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -13,6 +14,7 @@ from app.api.v1.router import router
 from app.core.config import settings
 from app.core.errors import HelpdeskError
 from app.services.ai.orchestrator import init_orchestrator
+from app.services.notifications.outbox import run_worker
 
 structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(
@@ -32,7 +34,14 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     redis = Redis.from_url(settings.redis_url, decode_responses=False, protocol=2)
     application.state.redis = redis
     await init_orchestrator(redis)
+
+    stop_event = asyncio.Event()
+    worker_task = asyncio.create_task(run_worker(stop_event))
+
     yield
+
+    stop_event.set()
+    await worker_task
     await redis.aclose()
 
 

@@ -496,8 +496,8 @@ async def convert_conversation(
             ", NOW() + (:res_hours || ' hours')::interval"
         )
         sla_params = {
-            "fr_hours": int(sla.first_response_hours),
-            "res_hours": int(sla.resolution_hours),
+            "fr_hours": str(int(sla.first_response_hours)),
+            "res_hours": str(int(sla.resolution_hours)),
         }
 
     ticket_result = await db.execute(

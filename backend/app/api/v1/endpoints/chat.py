@@ -224,20 +224,8 @@ async def send_message(
 
     redacted_content, pii_map = _redactor.redact(body.content)
 
-    await db.execute(
-        text(
-            "INSERT INTO helpdesk.ai_conversation_messages "  # noqa: S608
-            "(conversation_id, role, content, content_redacted) "
-            "VALUES (CAST(:cid AS uuid), 'user', :content, :redacted)"
-        ),
-        {"cid": conv_id, "content": redacted_content, "redacted": redacted_content},
-    )
-    await db.commit()
-
-    rag_chunks = await _retriever.retrieve(body.content, db)
-    context_blocks = _retriever.chunks_to_context_blocks(rag_chunks)
-
-    # Fetch prior turns so the LLM has conversation context
+    # Fetch prior turns BEFORE saving the current message so the current
+    # user input is not duplicated — _build_messages appends it separately.
     hist_r = await db.execute(
         text(
             "SELECT role, COALESCE(content_redacted, content) AS content "  # noqa: S608
@@ -251,6 +239,19 @@ async def send_message(
         {"role": "user" if r.role == "user" else "assistant", "content": str(r.content)}
         for r in hist_r.fetchall()
     ] or None
+
+    await db.execute(
+        text(
+            "INSERT INTO helpdesk.ai_conversation_messages "  # noqa: S608
+            "(conversation_id, role, content, content_redacted) "
+            "VALUES (CAST(:cid AS uuid), 'user', :content, :redacted)"
+        ),
+        {"cid": conv_id, "content": redacted_content, "redacted": redacted_content},
+    )
+    await db.commit()
+
+    rag_chunks = await _retriever.retrieve(body.content, db)
+    context_blocks = _retriever.chunks_to_context_blocks(rag_chunks)
 
     result: TriageOutput = await orch.complete(
         prompt_key="TRIAGE_SYSTEM",

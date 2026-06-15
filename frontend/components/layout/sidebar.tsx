@@ -15,13 +15,14 @@ const NAV = [
 ];
 
 const ADMIN_NAV = { href: "/admin", label: "Admin", icon: "🔧" };
+const ASSETS_NAV = { href: "/admin/assets", label: "Patrimônio", icon: "🖥" };
 
 const IT_ROLES = new Set(["it_agent", "it_lead", "it_admin"]);
 
 export function Sidebar({ role, userName }: Props) {
   const pathname = usePathname();
   const router = useRouter();
-  const items = IT_ROLES.has(role) ? [...NAV, ADMIN_NAV] : NAV;
+  const items = IT_ROLES.has(role) ? [...NAV, ASSETS_NAV, ADMIN_NAV] : NAV;
 
   async function handleLogout() {
     try {

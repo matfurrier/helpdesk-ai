@@ -61,6 +61,13 @@ const CARDS = [
     desc: "Logs de chamadas ao LLM — tokens, latência, guardrails",
     roles: ["it_admin", "it_lead", "it_agent"],
   },
+  {
+    href: "/admin/assets",
+    icon: "🖥",
+    label: "Patrimônio de TI",
+    desc: "Controle de notebooks, smartphones e outros equipamentos com histórico de titular",
+    roles: ["it_admin", "it_lead", "it_agent"],
+  },
 ];
 
 export default async function AdminHubPage() {

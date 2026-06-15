@@ -15,7 +15,7 @@
 #   docker stack deploy -c docker-compose.swarm.yml helpdesk
 
 x-backend-env: &backend-env
-  DATABASE_URL: "${DATABASE_URL}"
+  DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@helpdesk-postgres:5432/${POSTGRES_DB}"
   SECURITY_DB_HOST: "${SECURITY_DB_HOST}"
   SECURITY_DB_PORT: "${SECURITY_DB_PORT:-5432}"
   SECURITY_DB_USER: "${SECURITY_DB_USER}"

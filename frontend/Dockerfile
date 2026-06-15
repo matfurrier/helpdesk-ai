@@ -22,9 +22,9 @@ FROM node:22-alpine AS prod
 WORKDIR /app
 ENV NODE_ENV=production PORT=3004
 RUN addgroup -S app && adduser -S app -G app
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+COPY --chown=app:app --from=builder /app/.next/standalone ./
+COPY --chown=app:app --from=builder /app/.next/static ./.next/static
+COPY --chown=app:app --from=builder /app/public ./public
 USER app
 EXPOSE 3004
 CMD ["node", "server.js"]

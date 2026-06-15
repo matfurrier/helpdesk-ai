@@ -52,7 +52,7 @@ services:
     networks:
       - helpdesk_net
       - data          # reaches tasks.infra_postgres (helpdesk DB + security DB)
-      - intranet_net
+      - apps
     deploy:
       replicas: 2
       restart_policy:
@@ -80,7 +80,7 @@ services:
       - "8081:3004"
     networks:
       - helpdesk_net
-      - intranet_net
+      - apps
     deploy:
       replicas: 1
       restart_policy:
@@ -150,7 +150,7 @@ networks:
     attachable: true    # allows `docker run --network helpdesk_helpdesk_net` for one-off tasks
   data:
     external: true      # shared Swarm overlay — reaches tasks.infra_postgres
-  intranet_net:
+  apps:
     external: true
 
 volumes:

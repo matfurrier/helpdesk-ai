@@ -63,7 +63,7 @@ async def get_auth_csrf_token(response: Response) -> dict[str, str]:
         value=token,
         httponly=False,
         samesite="lax",
-        secure=not settings.is_dev,
+        secure=False,  # CSRF token is not secret; Secure flag breaks HTTP-only deploys
         path="/",
     )
     return {"csrf_token": token}

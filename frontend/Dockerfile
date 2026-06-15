@@ -15,6 +15,10 @@ FROM base AS builder
 COPY package.json pnpm-lock.yaml* ./
 RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 COPY . .
+# Bake the backend URL at build time so rewrites() in next.config.ts work in Swarm.
+# Override with: docker build --build-arg INTERNAL_API_URL=http://... (for local docker-compose builds)
+ARG INTERNAL_API_URL=http://backend:8004
+ENV INTERNAL_API_URL=$INTERNAL_API_URL
 RUN pnpm build
 
 # ---------- prod ----------

@@ -48,10 +48,17 @@ const CARDS = [
     roles: ["it_admin", "it_lead", "it_agent"],
   },
   {
+    href: "/admin/users-mgmt",
+    icon: "👤",
+    label: "Cadastro de Usuários",
+    desc: "Criar, editar, ativar/desativar e excluir usuários do diretório",
+    roles: ["it_admin", "it_lead", "it_agent"],
+  },
+  {
     href: "/admin/users",
     icon: "👥",
-    label: "Usuários & Papéis",
-    desc: "Conceder e revogar papéis de TI para usuários",
+    label: "Papéis TI",
+    desc: "Conceder e revogar papéis de it_admin / it_lead para o helpdesk",
     roles: ["it_admin", "it_lead", "it_agent"],
   },
   {

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.errors import ForbiddenError, HelpdeskError, NotFoundError
+from app.core.security import hash_password
 from app.db.session import get_db, get_security_db
 from app.schemas.auth import UserOut
 from app.schemas.kb import ArticleCreate, ArticleIngestOut
@@ -1173,6 +1174,290 @@ async def delete_application(
     )
     if result.fetchone() is None:
         raise NotFoundError("Aplicação não encontrada")
+    await sec_db.commit()
+
+
+# ===========================================================================
+# USER MANAGEMENT CRUD — security DB (public.users) + helpdesk role_overrides
+# active = smallint (0/1); uuid = native UUID type (cast to text on read)
+# ===========================================================================
+
+
+class UserMgmtOut(BaseModel):
+    model_config = ConfigDict(strict=False)
+
+    uuid: str
+    name: str
+    email: str
+    login: str | None
+    jobtitle: str | None
+    department_id: int | None
+    department_name: str | None
+    superior_id: int | None
+    superior_name: str | None
+    active: bool
+    role: str | None
+    sso_manager: bool
+    sso_auditor: bool
+    override_role: str | None
+    created_at: str | None
+
+
+class UserMgmtCreate(BaseModel):
+    name: str
+    email: str
+    password: str
+    login: str | None = None
+    jobtitle: str | None = None
+    department_id: int | None = None
+    superior_id: int | None = None
+    role: str | None = None
+    sso_manager: bool = False
+    sso_auditor: bool = False
+
+
+class UserMgmtUpdate(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    password: str | None = None
+    login: str | None = None
+    jobtitle: str | None = None
+    department_id: int | None = None
+    superior_id: int | None = None
+    active: bool | None = None
+    role: str | None = None
+    sso_manager: bool | None = None
+    sso_auditor: bool | None = None
+
+
+@router.get("/user-mgmt", response_model=list[UserMgmtOut])
+async def list_users_mgmt(
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_it_user),
+    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
+) -> list[UserMgmtOut]:
+    overrides_res = await db.execute(
+        text("SELECT user_uuid::text, role FROM helpdesk.role_overrides")
+    )
+    overrides: dict[str, str] = {r.user_uuid: r.role for r in overrides_res.fetchall()}
+
+    rows = await sec_db.execute(
+        text(
+            "SELECT u.id, u.uuid::text, u.name, u.email, u.login, u.jobtitle, "
+            "u.departmentid, d.name AS department_name, "
+            "u.superiorid, s.name AS superior_name, "
+            "u.active, u.role, u.sso_manager, u.sso_auditor, u.createdat::text "
+            "FROM public.users u "
+            "LEFT JOIN public.department d ON d.id = u.departmentid "
+            "LEFT JOIN public.users s ON s.id = u.superiorid "
+            "ORDER BY u.name"
+        )
+    )
+    return [
+        UserMgmtOut(
+            uuid=r.uuid,
+            name=r.name,
+            email=r.email,
+            login=r.login,
+            jobtitle=r.jobtitle,
+            department_id=r.departmentid,
+            department_name=r.department_name,
+            superior_id=r.superiorid,
+            superior_name=r.superior_name,
+            active=bool(r.active),
+            role=r.role,
+            sso_manager=bool(r.sso_manager),
+            sso_auditor=bool(r.sso_auditor),
+            override_role=overrides.get(r.uuid),
+            created_at=r.createdat,
+        )
+        for r in rows.fetchall()
+    ]
+
+
+@router.post("/user-mgmt", response_model=UserMgmtOut, status_code=201)
+async def create_user_mgmt(
+    body: UserMgmtCreate,
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_admin_user),
+    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
+) -> UserMgmtOut:
+    login_val = body.login or body.email.split("@")[0]
+    new_uuid = str(uuid_lib.uuid4())
+    hashed = hash_password(body.password)
+
+    row = await sec_db.execute(
+        text(
+            "INSERT INTO public.users "
+            "(uuid, name, email, password, login, jobtitle, departmentid, superiorid, "
+            "active, role, sso_manager, sso_auditor, createdat, updatedat) "
+            "VALUES (:uuid, :name, :email, :password, :login, :jobtitle, :dept, :sup, "
+            "1, :role, :sso_m, :sso_a, NOW(), NOW()) "
+            "RETURNING id, uuid::text, name, email, login, jobtitle, "
+            "departmentid, superiorid, active, role, sso_manager, sso_auditor, createdat::text"
+        ),
+        {
+            "uuid": new_uuid,
+            "name": body.name.strip(),
+            "email": body.email.strip().lower(),
+            "password": hashed,
+            "login": login_val,
+            "jobtitle": body.jobtitle,
+            "dept": body.department_id,
+            "sup": body.superior_id,
+            "role": body.role,
+            "sso_m": body.sso_manager,
+            "sso_a": body.sso_auditor,
+        },
+    )
+    r = row.fetchone()
+    await sec_db.commit()
+
+    dept_row = None
+    if r.departmentid:
+        dr = await sec_db.execute(
+            text("SELECT name FROM public.department WHERE id = :id"), {"id": r.departmentid}
+        )
+        dept_row = dr.fetchone()
+
+    return UserMgmtOut(
+        uuid=r.uuid,
+        name=r.name,
+        email=r.email,
+        login=r.login,
+        jobtitle=r.jobtitle,
+        department_id=r.departmentid,
+        department_name=dept_row.name if dept_row else None,
+        superior_id=r.superiorid,
+        superior_name=None,
+        active=bool(r.active),
+        role=r.role,
+        sso_manager=bool(r.sso_manager),
+        sso_auditor=bool(r.sso_auditor),
+        override_role=None,
+        created_at=r.createdat,
+    )
+
+
+@router.patch("/user-mgmt/{user_uuid}", response_model=UserMgmtOut)
+async def update_user_mgmt(
+    user_uuid: str,
+    body: UserMgmtUpdate,
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_admin_user),
+    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
+) -> UserMgmtOut:
+    existing = await sec_db.execute(
+        text(
+            "SELECT id, uuid::text, name, email, login, jobtitle, departmentid, superiorid, "
+            "active, role, sso_manager, sso_auditor FROM public.users WHERE uuid = :uuid"
+        ),
+        {"uuid": user_uuid},
+    )
+    r = existing.fetchone()
+    if r is None:
+        raise NotFoundError("Usuário não encontrado")
+
+    fields: dict[str, object] = {"uuid": user_uuid, "updatedat": "NOW()"}
+    set_clauses = ["updatedat = NOW()"]
+
+    def _set(col: str, val: object) -> None:
+        fields[col] = val
+        set_clauses.append(f"{col} = :{col}")
+
+    if body.name is not None:
+        _set("name", body.name.strip())
+    if body.email is not None:
+        _set("email", body.email.strip().lower())
+    if body.login is not None:
+        _set("login", body.login)
+    if body.jobtitle is not None:
+        _set("jobtitle", body.jobtitle)
+    if body.department_id is not None:
+        _set("departmentid", body.department_id)
+    if body.superior_id is not None:
+        _set("superiorid", body.superior_id)
+    if body.active is not None:
+        _set("active", 1 if body.active else 0)
+    if body.role is not None:
+        _set("role", body.role)
+    if body.sso_manager is not None:
+        _set("sso_manager", body.sso_manager)
+    if body.sso_auditor is not None:
+        _set("sso_auditor", body.sso_auditor)
+    if body.password:
+        _set("password", hash_password(body.password))
+
+    updated = await sec_db.execute(
+        text(
+            f"UPDATE public.users SET {', '.join(set_clauses)} WHERE uuid = :uuid "  # noqa: S608
+            "RETURNING id, uuid::text, name, email, login, jobtitle, "
+            "departmentid, superiorid, active, role, sso_manager, sso_auditor, createdat::text"
+        ),
+        fields,
+    )
+    u = updated.fetchone()
+    await sec_db.commit()
+
+    overrides_res = await db.execute(
+        text("SELECT role FROM helpdesk.role_overrides WHERE user_uuid = :uuid"),
+        {"uuid": user_uuid},
+    )
+    override_row = overrides_res.fetchone()
+
+    dept_row = None
+    if u.departmentid:
+        dr = await sec_db.execute(
+            text("SELECT name FROM public.department WHERE id = :id"), {"id": u.departmentid}
+        )
+        dept_row = dr.fetchone()
+
+    sup_row = None
+    if u.superiorid:
+        sr = await sec_db.execute(
+            text("SELECT name FROM public.users WHERE id = :id"), {"id": u.superiorid}
+        )
+        sup_row = sr.fetchone()
+
+    return UserMgmtOut(
+        uuid=u.uuid,
+        name=u.name,
+        email=u.email,
+        login=u.login,
+        jobtitle=u.jobtitle,
+        department_id=u.departmentid,
+        department_name=dept_row.name if dept_row else None,
+        superior_id=u.superiorid,
+        superior_name=sup_row.name if sup_row else None,
+        active=bool(u.active),
+        role=u.role,
+        sso_manager=bool(u.sso_manager),
+        sso_auditor=bool(u.sso_auditor),
+        override_role=override_row.role if override_row else None,
+        created_at=u.createdat,
+    )
+
+
+@router.delete("/user-mgmt/{user_uuid}", status_code=204)
+async def delete_user_mgmt(
+    user_uuid: str,
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_admin_user),
+    sec_db: AsyncSession = Depends(get_security_db),
+) -> None:
+    result = await sec_db.execute(
+        text("DELETE FROM public.users WHERE uuid = :uuid RETURNING id"),
+        {"uuid": user_uuid},
+    )
+    if result.fetchone() is None:
+        raise NotFoundError("Usuário não encontrado")
     await sec_db.commit()
 
 

@@ -18,6 +18,11 @@ from app.core.errors import AuthError
 _ph = PasswordHasher()
 
 
+def hash_password(plain: str) -> str:
+    """Hash a plain-text password with argon2id (same settings used by appdsvl)."""
+    return _ph.hash(plain)
+
+
 def verify_password(plain: str, hashed: str) -> bool:
     """Verifies argon2id hash. Returns False on any mismatch or format error."""
     try:

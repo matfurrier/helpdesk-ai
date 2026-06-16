@@ -892,6 +892,275 @@ async def ai_monitor(
 
 
 # ===========================================================================
+# DEPARTMENTS ADMIN
+# ===========================================================================
+
+
+class DepartmentOut(BaseModel):
+    model_config = ConfigDict(strict=False)
+
+    id: int
+    uuid: str
+    name: str
+    created_at: str
+
+
+class DepartmentIn(BaseModel):
+    name: str
+
+
+@router.get("/departments", response_model=list[DepartmentOut])
+async def list_departments(
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_it_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[DepartmentOut]:
+    rows = await db.execute(
+        text(
+            "SELECT id, uuid::text, name, created_at::text "
+            "FROM helpdesk.departments ORDER BY name"
+        )
+    )
+    return [
+        DepartmentOut(id=r.id, uuid=r.uuid, name=r.name, created_at=r.created_at)
+        for r in rows.fetchall()
+    ]
+
+
+@router.post("/departments", response_model=DepartmentOut, status_code=201)
+async def create_department(
+    body: DepartmentIn,
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_admin_user),
+    db: AsyncSession = Depends(get_db),
+) -> DepartmentOut:
+    row = await db.execute(
+        text(
+            "INSERT INTO helpdesk.departments (name) VALUES (:name) "
+            "RETURNING id, uuid::text, name, created_at::text"
+        ),
+        {"name": body.name.strip()},
+    )
+    r = row.fetchone()
+    await db.commit()
+    return DepartmentOut(id=r.id, uuid=r.uuid, name=r.name, created_at=r.created_at)
+
+
+@router.patch("/departments/{dept_id}", response_model=DepartmentOut)
+async def update_department(
+    dept_id: int,
+    body: DepartmentIn,
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_admin_user),
+    db: AsyncSession = Depends(get_db),
+) -> DepartmentOut:
+    row = await db.execute(
+        text(
+            "UPDATE helpdesk.departments SET name = :name WHERE id = :id "
+            "RETURNING id, uuid::text, name, created_at::text"
+        ),
+        {"name": body.name.strip(), "id": dept_id},
+    )
+    r = row.fetchone()
+    if r is None:
+        raise NotFoundError("Departamento não encontrado")
+    await db.commit()
+    return DepartmentOut(id=r.id, uuid=r.uuid, name=r.name, created_at=r.created_at)
+
+
+@router.delete("/departments/{dept_id}", status_code=204)
+async def delete_department(
+    dept_id: int,
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_admin_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    result = await db.execute(
+        text("DELETE FROM helpdesk.departments WHERE id = :id RETURNING id"),
+        {"id": dept_id},
+    )
+    if result.fetchone() is None:
+        raise NotFoundError("Departamento não encontrado")
+    await db.commit()
+
+
+# ===========================================================================
+# APPLICATIONS ADMIN
+# ===========================================================================
+
+
+class ApplicationOut(BaseModel):
+    model_config = ConfigDict(strict=False)
+
+    id: int
+    app_name: str
+    description: str | None
+    created_at: str
+    user_uuids: list[str]
+
+
+class ApplicationIn(BaseModel):
+    app_name: str
+    description: str | None = None
+    user_uuids: list[str] = []
+
+
+class ApplicationUpdate(BaseModel):
+    app_name: str | None = None
+    description: str | None = None
+    user_uuids: list[str] | None = None
+
+
+async def _fetch_app_users(db: AsyncSession, app_id: int) -> list[str]:
+    rows = await db.execute(
+        text(
+            "SELECT user_uuid FROM helpdesk.user_applications "
+            "WHERE app_id = :app_id ORDER BY user_uuid"
+        ),
+        {"app_id": app_id},
+    )
+    return [r.user_uuid for r in rows.fetchall()]
+
+
+async def _sync_app_users(db: AsyncSession, app_id: int, user_uuids: list[str]) -> None:
+    await db.execute(
+        text("DELETE FROM helpdesk.user_applications WHERE app_id = :app_id"),
+        {"app_id": app_id},
+    )
+    for uuid in user_uuids:
+        await db.execute(
+            text(
+                "INSERT INTO helpdesk.user_applications (user_uuid, app_id) "
+                "VALUES (:u, :a) ON CONFLICT DO NOTHING"
+            ),
+            {"u": uuid, "a": app_id},
+        )
+
+
+@router.get("/applications", response_model=list[ApplicationOut])
+async def list_applications(
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_it_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[ApplicationOut]:
+    rows = await db.execute(
+        text(
+            "SELECT id, app_name, description, created_at::text "
+            "FROM helpdesk.applications ORDER BY app_name"
+        )
+    )
+    result = []
+    for a in rows.fetchall():
+        uuids = await _fetch_app_users(db, int(a.id))
+        result.append(
+            ApplicationOut(
+                id=a.id,
+                app_name=a.app_name,
+                description=a.description,
+                created_at=a.created_at,
+                user_uuids=uuids,
+            )
+        )
+    return result
+
+
+@router.post("/applications", response_model=ApplicationOut, status_code=201)
+async def create_application(
+    body: ApplicationIn,
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_admin_user),
+    db: AsyncSession = Depends(get_db),
+) -> ApplicationOut:
+    row = await db.execute(
+        text(
+            "INSERT INTO helpdesk.applications (app_name, description) "
+            "VALUES (:name, :desc) "
+            "RETURNING id, app_name, description, created_at::text"
+        ),
+        {"name": body.app_name.strip(), "desc": body.description},
+    )
+    r = row.fetchone()
+    app_id = int(r.id)
+    await _sync_app_users(db, app_id, body.user_uuids)
+    await db.commit()
+    return ApplicationOut(
+        id=app_id,
+        app_name=r.app_name,
+        description=r.description,
+        created_at=r.created_at,
+        user_uuids=body.user_uuids,
+    )
+
+
+@router.patch("/applications/{app_id}", response_model=ApplicationOut)
+async def update_application(
+    app_id: int,
+    body: ApplicationUpdate,
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_admin_user),
+    db: AsyncSession = Depends(get_db),
+) -> ApplicationOut:
+    existing = await db.execute(
+        text(
+            "SELECT id, app_name, description, created_at::text "
+            "FROM helpdesk.applications WHERE id = :id"
+        ),
+        {"id": app_id},
+    )
+    r = existing.fetchone()
+    if r is None:
+        raise NotFoundError("Aplicação não encontrada")
+
+    new_name = body.app_name.strip() if body.app_name is not None else str(r.app_name)
+    new_desc = body.description if body.description is not None else r.description
+
+    updated = await db.execute(
+        text(
+            "UPDATE helpdesk.applications SET app_name = :name, description = :desc "
+            "WHERE id = :id "
+            "RETURNING id, app_name, description, created_at::text"
+        ),
+        {"name": new_name, "desc": new_desc, "id": app_id},
+    )
+    u = updated.fetchone()
+    if body.user_uuids is not None:
+        await _sync_app_users(db, app_id, body.user_uuids)
+    user_uuids = await _fetch_app_users(db, app_id)
+    await db.commit()
+    return ApplicationOut(
+        id=app_id,
+        app_name=u.app_name,
+        description=u.description,
+        created_at=u.created_at,
+        user_uuids=user_uuids,
+    )
+
+
+@router.delete("/applications/{app_id}", status_code=204)
+async def delete_application(
+    app_id: int,
+    request: Request,
+    response: Response,
+    current_user: UserOut = Depends(_admin_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    result = await db.execute(
+        text("DELETE FROM helpdesk.applications WHERE id = :id RETURNING id"),
+        {"id": app_id},
+    )
+    if result.fetchone() is None:
+        raise NotFoundError("Aplicação não encontrada")
+    await db.commit()
+
+
+# ===========================================================================
 # PUBLIC KB READ — any authenticated user
 # ===========================================================================
 

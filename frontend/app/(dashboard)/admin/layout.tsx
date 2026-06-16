@@ -10,6 +10,8 @@ const IT_ROLES = new Set(["it_agent", "it_lead", "it_admin"]);
 const SUB_NAV = [
   { href: "/admin/kb", label: "Base de Conhecimento" },
   { href: "/admin/categories", label: "Categorias" },
+  { href: "/admin/departments", label: "Departamentos" },
+  { href: "/admin/applications", label: "Aplicações" },
   { href: "/admin/users", label: "Usuários & Papéis" },
   { href: "/admin/sla", label: "SLA" },
   { href: "/admin/reports", label: "Relatórios" },

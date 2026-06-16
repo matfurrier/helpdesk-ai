@@ -34,6 +34,20 @@ const CARDS = [
     roles: ["it_admin", "it_lead", "it_agent"],
   },
   {
+    href: "/admin/departments",
+    icon: "🏢",
+    label: "Departamentos",
+    desc: "Cadastrar e gerenciar departamentos da empresa",
+    roles: ["it_admin", "it_lead", "it_agent"],
+  },
+  {
+    href: "/admin/applications",
+    icon: "🔗",
+    label: "Aplicações",
+    desc: "Catálogo de sistemas internos e controle de acesso por usuário",
+    roles: ["it_admin", "it_lead", "it_agent"],
+  },
+  {
     href: "/admin/users",
     icon: "👥",
     label: "Usuários & Papéis",

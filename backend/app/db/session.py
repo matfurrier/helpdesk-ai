@@ -23,7 +23,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-# --- Security database (read-only — shared user directory, public.users) ---
+# --- Security database — shared user directory (public.users, department, applications) ---
 _security_engine = create_async_engine(
     settings.security_db_url,
     echo=False,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import uuid as uuid_lib
 from typing import Annotated
 
 import structlog
@@ -892,7 +893,8 @@ async def ai_monitor(
 
 
 # ===========================================================================
-# DEPARTMENTS ADMIN
+# DEPARTMENTS ADMIN — source of truth: security DB (public.department)
+# Sequelize column names: createdat / updatedat (no underscore)
 # ===========================================================================
 
 
@@ -914,16 +916,16 @@ async def list_departments(
     request: Request,
     response: Response,
     current_user: UserOut = Depends(_it_user),
-    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
 ) -> list[DepartmentOut]:
-    rows = await db.execute(
+    rows = await sec_db.execute(
         text(
-            "SELECT id, uuid::text, name, created_at::text "
-            "FROM helpdesk.departments ORDER BY name"
+            "SELECT id, uuid, name, createdat::text "
+            "FROM public.department ORDER BY name"
         )
     )
     return [
-        DepartmentOut(id=r.id, uuid=r.uuid, name=r.name, created_at=r.created_at)
+        DepartmentOut(id=r.id, uuid=r.uuid, name=r.name, created_at=r.createdat)
         for r in rows.fetchall()
     ]
 
@@ -934,18 +936,20 @@ async def create_department(
     request: Request,
     response: Response,
     current_user: UserOut = Depends(_admin_user),
-    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
 ) -> DepartmentOut:
-    row = await db.execute(
+    new_uuid = str(uuid_lib.uuid4())
+    row = await sec_db.execute(
         text(
-            "INSERT INTO helpdesk.departments (name) VALUES (:name) "
-            "RETURNING id, uuid::text, name, created_at::text"
+            "INSERT INTO public.department (uuid, name, createdat, updatedat) "
+            "VALUES (:uuid, :name, NOW(), NOW()) "
+            "RETURNING id, uuid, name, createdat::text"
         ),
-        {"name": body.name.strip()},
+        {"uuid": new_uuid, "name": body.name.strip()},
     )
     r = row.fetchone()
-    await db.commit()
-    return DepartmentOut(id=r.id, uuid=r.uuid, name=r.name, created_at=r.created_at)
+    await sec_db.commit()
+    return DepartmentOut(id=r.id, uuid=r.uuid, name=r.name, created_at=r.createdat)
 
 
 @router.patch("/departments/{dept_id}", response_model=DepartmentOut)
@@ -955,20 +959,20 @@ async def update_department(
     request: Request,
     response: Response,
     current_user: UserOut = Depends(_admin_user),
-    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
 ) -> DepartmentOut:
-    row = await db.execute(
+    row = await sec_db.execute(
         text(
-            "UPDATE helpdesk.departments SET name = :name WHERE id = :id "
-            "RETURNING id, uuid::text, name, created_at::text"
+            "UPDATE public.department SET name = :name, updatedat = NOW() WHERE id = :id "
+            "RETURNING id, uuid, name, createdat::text"
         ),
         {"name": body.name.strip(), "id": dept_id},
     )
     r = row.fetchone()
     if r is None:
         raise NotFoundError("Departamento não encontrado")
-    await db.commit()
-    return DepartmentOut(id=r.id, uuid=r.uuid, name=r.name, created_at=r.created_at)
+    await sec_db.commit()
+    return DepartmentOut(id=r.id, uuid=r.uuid, name=r.name, created_at=r.createdat)
 
 
 @router.delete("/departments/{dept_id}", status_code=204)
@@ -977,19 +981,20 @@ async def delete_department(
     request: Request,
     response: Response,
     current_user: UserOut = Depends(_admin_user),
-    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
 ) -> None:
-    result = await db.execute(
-        text("DELETE FROM helpdesk.departments WHERE id = :id RETURNING id"),
+    result = await sec_db.execute(
+        text("DELETE FROM public.department WHERE id = :id RETURNING id"),
         {"id": dept_id},
     )
     if result.fetchone() is None:
         raise NotFoundError("Departamento não encontrado")
-    await db.commit()
+    await sec_db.commit()
 
 
 # ===========================================================================
-# APPLICATIONS ADMIN
+# APPLICATIONS ADMIN — source of truth: security DB (public.applications)
+# user_applications links via user_id INTEGER; we map to/from UUID via users.
 # ===========================================================================
 
 
@@ -1015,30 +1020,40 @@ class ApplicationUpdate(BaseModel):
     user_uuids: list[str] | None = None
 
 
-async def _fetch_app_users(db: AsyncSession, app_id: int) -> list[str]:
-    rows = await db.execute(
+async def _fetch_app_users(sec_db: AsyncSession, app_id: int) -> list[str]:
+    """Return list of user UUIDs assigned to app_id via public.user_applications."""
+    rows = await sec_db.execute(
         text(
-            "SELECT user_uuid FROM helpdesk.user_applications "
-            "WHERE app_id = :app_id ORDER BY user_uuid"
+            "SELECT u.uuid::text AS user_uuid "
+            "FROM public.user_applications ua "
+            "JOIN public.users u ON u.id = ua.user_id "
+            "WHERE ua.app_id = :app_id ORDER BY u.name"
         ),
         {"app_id": app_id},
     )
     return [r.user_uuid for r in rows.fetchall()]
 
 
-async def _sync_app_users(db: AsyncSession, app_id: int, user_uuids: list[str]) -> None:
-    await db.execute(
-        text("DELETE FROM helpdesk.user_applications WHERE app_id = :app_id"),
+async def _sync_app_users(sec_db: AsyncSession, app_id: int, user_uuids: list[str]) -> None:
+    """Replace user assignments for app_id with the provided UUID list."""
+    await sec_db.execute(
+        text("DELETE FROM public.user_applications WHERE app_id = :app_id"),
         {"app_id": app_id},
     )
-    for uuid in user_uuids:
-        await db.execute(
-            text(
-                "INSERT INTO helpdesk.user_applications (user_uuid, app_id) "
-                "VALUES (:u, :a) ON CONFLICT DO NOTHING"
-            ),
-            {"u": uuid, "a": app_id},
+    for u_uuid in user_uuids:
+        result = await sec_db.execute(
+            text("SELECT id FROM public.users WHERE uuid = :uuid"),
+            {"uuid": u_uuid},
         )
+        user_row = result.fetchone()
+        if user_row:
+            await sec_db.execute(
+                text(
+                    "INSERT INTO public.user_applications (user_id, app_id, createdat, updatedat) "
+                    "VALUES (:user_id, :app_id, NOW(), NOW())"
+                ),
+                {"user_id": user_row.id, "app_id": app_id},
+            )
 
 
 @router.get("/applications", response_model=list[ApplicationOut])
@@ -1046,23 +1061,23 @@ async def list_applications(
     request: Request,
     response: Response,
     current_user: UserOut = Depends(_it_user),
-    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
 ) -> list[ApplicationOut]:
-    rows = await db.execute(
+    rows = await sec_db.execute(
         text(
-            "SELECT id, app_name, description, created_at::text "
-            "FROM helpdesk.applications ORDER BY app_name"
+            "SELECT id, app_name, description, createdat::text "
+            "FROM public.applications ORDER BY app_name"
         )
     )
     result = []
     for a in rows.fetchall():
-        uuids = await _fetch_app_users(db, int(a.id))
+        uuids = await _fetch_app_users(sec_db, int(a.id))
         result.append(
             ApplicationOut(
                 id=a.id,
                 app_name=a.app_name,
                 description=a.description,
-                created_at=a.created_at,
+                created_at=a.createdat,
                 user_uuids=uuids,
             )
         )
@@ -1075,25 +1090,25 @@ async def create_application(
     request: Request,
     response: Response,
     current_user: UserOut = Depends(_admin_user),
-    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
 ) -> ApplicationOut:
-    row = await db.execute(
+    row = await sec_db.execute(
         text(
-            "INSERT INTO helpdesk.applications (app_name, description) "
-            "VALUES (:name, :desc) "
-            "RETURNING id, app_name, description, created_at::text"
+            "INSERT INTO public.applications (app_name, description, createdat, updatedat) "
+            "VALUES (:name, :desc, NOW(), NOW()) "
+            "RETURNING id, app_name, description, createdat::text"
         ),
         {"name": body.app_name.strip(), "desc": body.description},
     )
     r = row.fetchone()
     app_id = int(r.id)
-    await _sync_app_users(db, app_id, body.user_uuids)
-    await db.commit()
+    await _sync_app_users(sec_db, app_id, body.user_uuids)
+    await sec_db.commit()
     return ApplicationOut(
         id=app_id,
         app_name=r.app_name,
         description=r.description,
-        created_at=r.created_at,
+        created_at=r.createdat,
         user_uuids=body.user_uuids,
     )
 
@@ -1105,12 +1120,12 @@ async def update_application(
     request: Request,
     response: Response,
     current_user: UserOut = Depends(_admin_user),
-    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
 ) -> ApplicationOut:
-    existing = await db.execute(
+    existing = await sec_db.execute(
         text(
-            "SELECT id, app_name, description, created_at::text "
-            "FROM helpdesk.applications WHERE id = :id"
+            "SELECT id, app_name, description, createdat::text "
+            "FROM public.applications WHERE id = :id"
         ),
         {"id": app_id},
     )
@@ -1121,24 +1136,25 @@ async def update_application(
     new_name = body.app_name.strip() if body.app_name is not None else str(r.app_name)
     new_desc = body.description if body.description is not None else r.description
 
-    updated = await db.execute(
+    updated = await sec_db.execute(
         text(
-            "UPDATE helpdesk.applications SET app_name = :name, description = :desc "
+            "UPDATE public.applications "
+            "SET app_name = :name, description = :desc, updatedat = NOW() "
             "WHERE id = :id "
-            "RETURNING id, app_name, description, created_at::text"
+            "RETURNING id, app_name, description, createdat::text"
         ),
         {"name": new_name, "desc": new_desc, "id": app_id},
     )
     u = updated.fetchone()
     if body.user_uuids is not None:
-        await _sync_app_users(db, app_id, body.user_uuids)
-    user_uuids = await _fetch_app_users(db, app_id)
-    await db.commit()
+        await _sync_app_users(sec_db, app_id, body.user_uuids)
+    user_uuids = await _fetch_app_users(sec_db, app_id)
+    await sec_db.commit()
     return ApplicationOut(
         id=app_id,
         app_name=u.app_name,
         description=u.description,
-        created_at=u.created_at,
+        created_at=u.createdat,
         user_uuids=user_uuids,
     )
 
@@ -1149,15 +1165,15 @@ async def delete_application(
     request: Request,
     response: Response,
     current_user: UserOut = Depends(_admin_user),
-    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
 ) -> None:
-    result = await db.execute(
-        text("DELETE FROM helpdesk.applications WHERE id = :id RETURNING id"),
+    result = await sec_db.execute(
+        text("DELETE FROM public.applications WHERE id = :id RETURNING id"),
         {"id": app_id},
     )
     if result.fetchone() is None:
         raise NotFoundError("Aplicação não encontrada")
-    await db.commit()
+    await sec_db.commit()
 
 
 # ===========================================================================

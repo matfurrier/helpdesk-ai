@@ -1,4 +1,4 @@
-.PHONY: dev test migrate migrate-swarm migrate-prod lint ci-local build down frontend-bootstrap
+.PHONY: dev test migrate migrate-swarm migrate-prod deploy-swarm lint ci-local build down frontend-bootstrap
 
 # Start all services with hot-reload
 dev:
@@ -19,6 +19,13 @@ test-pi:
 # Apply Alembic migrations via the running backend container (dev/local only)
 migrate:
 	docker exec helpdesk-backend alembic upgrade head
+
+# Build prod images and deploy to Swarm, sourcing .env first so all vars expand correctly.
+# Usage: make deploy-swarm
+deploy-swarm:
+	docker build -t helpdesk-backend:prod ./backend
+	docker build -t helpdesk-frontend:prod ./frontend
+	set -a && . ./.env && set +a && docker stack deploy -c docker-compose.swarm.yml helpdesk
 
 # Run migration inside any running Swarm backend replica.
 # The container already has DATABASE_URL pointing to infra_postgres.

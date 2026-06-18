@@ -286,7 +286,7 @@ export default function AssetDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          {asset.status !== "retired" && asset.holder_id && (
+          {asset.status !== "retired" && (asset.holder_id || asset.holder_name) && (
             <button
               onClick={() => { setReturnNotes(""); setShowReturn(true); }}
               className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 border border-zinc-700 transition-colors"
@@ -302,7 +302,7 @@ export default function AssetDetailPage() {
                     onClick={openAssign}
                     className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 border border-zinc-700 transition-colors"
                   >
-                    {asset.holder_id ? "Transferir" : "Atribuir"}
+                    {asset.holder_id || asset.holder_name ? "Transferir" : "Atribuir"}
                   </button>
                   <button
                     onClick={() => startEdit(asset)}

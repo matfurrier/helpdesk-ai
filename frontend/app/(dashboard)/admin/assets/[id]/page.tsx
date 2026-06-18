@@ -286,6 +286,14 @@ export default function AssetDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          {asset.status !== "retired" && asset.holder_id && (
+            <button
+              onClick={() => { setReturnNotes(""); setShowReturn(true); }}
+              className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 border border-zinc-700 transition-colors"
+            >
+              Devolver
+            </button>
+          )}
           {!editing && (
             <>
               {asset.status !== "retired" && (
@@ -296,14 +304,6 @@ export default function AssetDetailPage() {
                   >
                     {asset.holder_id ? "Transferir" : "Atribuir"}
                   </button>
-                  {asset.holder_id && (
-                    <button
-                      onClick={() => { setReturnNotes(""); setShowReturn(true); }}
-                      className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 border border-zinc-700 transition-colors"
-                    >
-                      Devolver
-                    </button>
-                  )}
                   <button
                     onClick={() => startEdit(asset)}
                     className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"

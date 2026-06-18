@@ -18,7 +18,7 @@ interface UserOption {
 }
 
 async function getCsrfHeaders(): Promise<HeadersInit> {
-  await fetch("/api/v1/auth/csrf");
+  await fetch("/api/v1/auth/csrf-token");
   const csrf = document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
   return { "Content-Type": "application/json", "X-CSRF-Token": csrf };
 }

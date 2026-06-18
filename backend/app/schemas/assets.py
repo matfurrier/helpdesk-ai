@@ -53,7 +53,7 @@ class AssetOut(AssetListItem):
 
 
 class AssetCreate(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(strict=False)
 
     asset_tag: str | None = Field(default=None, max_length=50)
     asset_type: AssetType
@@ -69,7 +69,7 @@ class AssetCreate(BaseModel):
 
 
 class AssetUpdate(BaseModel):
-    model_config = ConfigDict(strict=True)
+    model_config = ConfigDict(strict=False)
 
     asset_tag: str | None = Field(default=None, max_length=50)
     brand: str | None = Field(default=None, max_length=100)

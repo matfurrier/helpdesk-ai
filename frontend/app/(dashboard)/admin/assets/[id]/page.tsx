@@ -73,7 +73,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 async function getCsrfHeaders(): Promise<HeadersInit> {
-  await fetch("/api/v1/auth/csrf");
+  await fetch("/api/v1/auth/csrf-token");
   const csrf =
     document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
   return { "Content-Type": "application/json", "X-CSRF-Token": csrf };
@@ -169,8 +169,14 @@ export default function AssetDetailPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const err = (await res.json()) as { detail?: string };
-        setError(err.detail ?? "Erro ao salvar");
+        const err = (await res.json()) as { detail?: unknown };
+        const detail = err.detail;
+        const msg = typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? (detail as { msg?: string }[]).map((e) => e.msg ?? String(e)).join("; ")
+            : "Erro ao salvar";
+        setError(msg);
         return;
       }
       setEditing(false);
@@ -206,8 +212,9 @@ export default function AssetDetailPage() {
         body: JSON.stringify({ holder_id: selectedUser, notes: assignNotes || null }),
       });
       if (!res.ok) {
-        const err = (await res.json()) as { detail?: string };
-        setError(err.detail ?? "Erro ao atribuir");
+        const err = (await res.json()) as { detail?: unknown };
+        const detail = err.detail;
+        setError(typeof detail === "string" ? detail : Array.isArray(detail) ? (detail as { msg?: string }[]).map((e) => e.msg ?? String(e)).join("; ") : "Erro ao atribuir");
         return;
       }
       setShowAssign(false);
@@ -226,8 +233,9 @@ export default function AssetDetailPage() {
         body: JSON.stringify({ notes: returnNotes || null }),
       });
       if (!res.ok) {
-        const err = (await res.json()) as { detail?: string };
-        setError(err.detail ?? "Erro ao registrar devolução");
+        const err = (await res.json()) as { detail?: unknown };
+        const detail = err.detail;
+        setError(typeof detail === "string" ? detail : Array.isArray(detail) ? (detail as { msg?: string }[]).map((e) => e.msg ?? String(e)).join("; ") : "Erro ao registrar devolução");
         return;
       }
       setShowReturn(false);

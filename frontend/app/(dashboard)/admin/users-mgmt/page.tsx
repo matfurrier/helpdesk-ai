@@ -19,6 +19,11 @@ interface UserMgmt {
   role: string | null;
   sso_manager: boolean;
   sso_auditor: boolean;
+  procure_manager: boolean;
+  sso_limpeza: boolean;
+  sso_guarita: boolean;
+  dreadmin: boolean;
+  dredepartmentadmin: boolean;
   override_role: string | null;
   created_at: string | null;
 }
@@ -48,6 +53,11 @@ function UserDialog({
   const [supUuid, setSupUuid] = useState("");
   const [ssoManager, setSsoManager] = useState(false);
   const [ssoAuditor, setSsoAuditor] = useState(false);
+  const [procureManager, setProcureManager] = useState(false);
+  const [ssoLimpeza, setSsoLimpeza] = useState(false);
+  const [ssoGuarita, setSsoGuarita] = useState(false);
+  const [dreadmin, setDreadmin] = useState(false);
+  const [dredeptadmin, setDredeptadmin] = useState(false);
   const [active, setActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -62,6 +72,11 @@ function UserDialog({
     setDeptId(user?.department_id ?? "");
     setSsoManager(user?.sso_manager ?? false);
     setSsoAuditor(user?.sso_auditor ?? false);
+    setProcureManager(user?.procure_manager ?? false);
+    setSsoLimpeza(user?.sso_limpeza ?? false);
+    setSsoGuarita(user?.sso_guarita ?? false);
+    setDreadmin(user?.dreadmin ?? false);
+    setDredeptadmin(user?.dredepartmentadmin ?? false);
     setActive(user?.active ?? true);
     // find superior uuid from users list
     const sup = users.find((u) => u.department_id === user?.superior_id || u.name === user?.superior_name);
@@ -86,6 +101,11 @@ function UserDialog({
         department_id: deptId !== "" ? Number(deptId) : null,
         sso_manager: ssoManager,
         sso_auditor: ssoAuditor,
+        procure_manager: procureManager,
+        sso_limpeza: ssoLimpeza,
+        sso_guarita: ssoGuarita,
+        dreadmin: dreadmin,
+        dredepartmentadmin: dredeptadmin,
       };
       if (password.trim()) payload.password = password.trim();
       if (!user) payload.password = password.trim();
@@ -182,15 +202,24 @@ function UserDialog({
             </div>
           )}
 
-          <div className="col-span-2 flex gap-6">
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
-              <input type="checkbox" checked={ssoManager} onChange={(e) => setSsoManager(e.target.checked)} className="accent-blue-500" />
-              SSO Manager
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
-              <input type="checkbox" checked={ssoAuditor} onChange={(e) => setSsoAuditor(e.target.checked)} className="accent-blue-500" />
-              SSO Auditor
-            </label>
+          <div className="col-span-2 space-y-2">
+            <p className="text-[11px] text-zinc-500 font-medium uppercase tracking-wide">Permissões do sistema</p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+              {([
+                ["SSO Manager",      ssoManager,    setSsoManager],
+                ["SSO Auditor",      ssoAuditor,    setSsoAuditor],
+                ["Gerente Compras",  procureManager, setProcureManager],
+                ["SSO Limpeza",      ssoLimpeza,    setSsoLimpeza],
+                ["SSO Guarita",      ssoGuarita,    setSsoGuarita],
+                ["Admin DRE",        dreadmin,      setDreadmin],
+                ["Admin Depto. DRE", dredeptadmin,  setDredeptadmin],
+              ] as [string, boolean, (v: boolean) => void][]).map(([label, val, setter]) => (
+                <label key={label} className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
+                  <input type="checkbox" checked={val} onChange={(e) => setter(e.target.checked)} className="accent-blue-500" />
+                  {label}
+                </label>
+              ))}
+            </div>
           </div>
         </div>
 

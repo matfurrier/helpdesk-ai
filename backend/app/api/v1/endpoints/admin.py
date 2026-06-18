@@ -1199,6 +1199,11 @@ class UserMgmtOut(BaseModel):
     role: str | None
     sso_manager: bool
     sso_auditor: bool
+    procure_manager: bool
+    sso_limpeza: bool
+    sso_guarita: bool
+    dreadmin: bool
+    dredepartmentadmin: bool
     override_role: str | None
     created_at: str | None
 
@@ -1214,6 +1219,11 @@ class UserMgmtCreate(BaseModel):
     role: str | None = None
     sso_manager: bool = False
     sso_auditor: bool = False
+    procure_manager: bool = False
+    sso_limpeza: bool = False
+    sso_guarita: bool = False
+    dreadmin: bool = False
+    dredepartmentadmin: bool = False
 
 
 class UserMgmtUpdate(BaseModel):
@@ -1228,6 +1238,11 @@ class UserMgmtUpdate(BaseModel):
     role: str | None = None
     sso_manager: bool | None = None
     sso_auditor: bool | None = None
+    procure_manager: bool | None = None
+    sso_limpeza: bool | None = None
+    sso_guarita: bool | None = None
+    dreadmin: bool | None = None
+    dredepartmentadmin: bool | None = None
 
 
 @router.get("/user-mgmt", response_model=list[UserMgmtOut])
@@ -1248,7 +1263,9 @@ async def list_users_mgmt(
             "SELECT u.id, u.uuid::text, u.name, u.email, u.login, u.jobtitle, "
             "u.departmentid, d.name AS department_name, "
             "u.superiorid, s.name AS superior_name, "
-            "u.active, u.role, u.sso_manager, u.sso_auditor, u.createdat::text "
+            "u.active, u.role, u.sso_manager, u.sso_auditor, "
+            "u.procure_manager, u.sso_limpeza, u.sso_guarita, "
+            "u.dreadmin, u.dredepartmentadmin, u.createdat::text "
             "FROM public.users u "
             "LEFT JOIN public.department d ON d.id = u.departmentid "
             "LEFT JOIN public.users s ON s.id = u.superiorid "
@@ -1270,6 +1287,11 @@ async def list_users_mgmt(
             role=r.role,
             sso_manager=bool(r.sso_manager),
             sso_auditor=bool(r.sso_auditor),
+            procure_manager=bool(r.procure_manager),
+            sso_limpeza=bool(r.sso_limpeza),
+            sso_guarita=bool(r.sso_guarita),
+            dreadmin=bool(r.dreadmin),
+            dredepartmentadmin=bool(r.dredepartmentadmin),
             override_role=overrides.get(r.uuid),
             created_at=r.createdat,
         )
@@ -1294,11 +1316,14 @@ async def create_user_mgmt(
         text(
             "INSERT INTO public.users "
             "(uuid, name, email, password, login, jobtitle, departmentid, superiorid, "
-            "active, role, sso_manager, sso_auditor, createdat, updatedat) "
+            "active, role, sso_manager, sso_auditor, procure_manager, sso_limpeza, "
+            "sso_guarita, dreadmin, dredepartmentadmin, createdat, updatedat) "
             "VALUES (:uuid, :name, :email, :password, :login, :jobtitle, :dept, :sup, "
-            "1, :role, :sso_m, :sso_a, NOW(), NOW()) "
+            "1, :role, :sso_m, :sso_a, :proc_m, :sso_l, :sso_g, :dra, :drda, NOW(), NOW()) "
             "RETURNING id, uuid::text, name, email, login, jobtitle, "
-            "departmentid, superiorid, active, role, sso_manager, sso_auditor, createdat::text"
+            "departmentid, superiorid, active, role, sso_manager, sso_auditor, "
+            "procure_manager, sso_limpeza, sso_guarita, dreadmin, dredepartmentadmin, "
+            "createdat::text"
         ),
         {
             "uuid": new_uuid,
@@ -1312,6 +1337,11 @@ async def create_user_mgmt(
             "role": body.role,
             "sso_m": body.sso_manager,
             "sso_a": body.sso_auditor,
+            "proc_m": body.procure_manager,
+            "sso_l": body.sso_limpeza,
+            "sso_g": body.sso_guarita,
+            "dra": 1 if body.dreadmin else 0,
+            "drda": 1 if body.dredepartmentadmin else 0,
         },
     )
     r = row.fetchone()
@@ -1338,6 +1368,11 @@ async def create_user_mgmt(
         role=r.role,
         sso_manager=bool(r.sso_manager),
         sso_auditor=bool(r.sso_auditor),
+        procure_manager=bool(r.procure_manager),
+        sso_limpeza=bool(r.sso_limpeza),
+        sso_guarita=bool(r.sso_guarita),
+        dreadmin=bool(r.dreadmin),
+        dredepartmentadmin=bool(r.dredepartmentadmin),
         override_role=None,
         created_at=r.createdat,
     )
@@ -1391,6 +1426,16 @@ async def update_user_mgmt(
         _set("sso_manager", body.sso_manager)
     if body.sso_auditor is not None:
         _set("sso_auditor", body.sso_auditor)
+    if body.procure_manager is not None:
+        _set("procure_manager", body.procure_manager)
+    if body.sso_limpeza is not None:
+        _set("sso_limpeza", body.sso_limpeza)
+    if body.sso_guarita is not None:
+        _set("sso_guarita", body.sso_guarita)
+    if body.dreadmin is not None:
+        _set("dreadmin", 1 if body.dreadmin else 0)
+    if body.dredepartmentadmin is not None:
+        _set("dredepartmentadmin", 1 if body.dredepartmentadmin else 0)
     if body.password:
         _set("password", hash_password(body.password))
 
@@ -1398,7 +1443,9 @@ async def update_user_mgmt(
         text(
             f"UPDATE public.users SET {', '.join(set_clauses)} WHERE uuid = :uuid "  # noqa: S608
             "RETURNING id, uuid::text, name, email, login, jobtitle, "
-            "departmentid, superiorid, active, role, sso_manager, sso_auditor, createdat::text"
+            "departmentid, superiorid, active, role, sso_manager, sso_auditor, "
+            "procure_manager, sso_limpeza, sso_guarita, dreadmin, dredepartmentadmin, "
+            "createdat::text"
         ),
         fields,
     )
@@ -1439,6 +1486,11 @@ async def update_user_mgmt(
         role=u.role,
         sso_manager=bool(u.sso_manager),
         sso_auditor=bool(u.sso_auditor),
+        procure_manager=bool(u.procure_manager),
+        sso_limpeza=bool(u.sso_limpeza),
+        sso_guarita=bool(u.sso_guarita),
+        dreadmin=bool(u.dreadmin),
+        dredepartmentadmin=bool(u.dredepartmentadmin),
         override_role=override_row.role if override_row else None,
         created_at=u.createdat,
     )

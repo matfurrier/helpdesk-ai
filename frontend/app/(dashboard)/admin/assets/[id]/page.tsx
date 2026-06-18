@@ -296,6 +296,12 @@ export default function AssetDetailPage() {
           )}
           {!editing && (
             <>
+              <button
+                onClick={() => startEdit(asset)}
+                className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
+              >
+                Editar
+              </button>
               {asset.status !== "retired" && (
                 <>
                   <button
@@ -303,12 +309,6 @@ export default function AssetDetailPage() {
                     className="px-3 py-1.5 bg-zinc-800 text-zinc-300 text-xs rounded hover:bg-zinc-700 border border-zinc-700 transition-colors"
                   >
                     {asset.holder_id || asset.holder_name ? "Transferir" : "Atribuir"}
-                  </button>
-                  <button
-                    onClick={() => startEdit(asset)}
-                    className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
-                  >
-                    Editar
                   </button>
                   <button
                     onClick={() => void handleRetire()}

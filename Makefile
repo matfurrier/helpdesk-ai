@@ -21,11 +21,14 @@ migrate:
 	docker exec helpdesk-backend alembic upgrade head
 
 # Build prod images and deploy to Swarm, sourcing .env first so all vars expand correctly.
+# --force-recreate ensures local-tagged images (no registry digest) are always restarted.
 # Usage: make deploy-swarm
 deploy-swarm:
 	docker build -t helpdesk-backend:prod ./backend
 	docker build -t helpdesk-frontend:prod ./frontend
 	set -a && . ./.env && set +a && docker stack deploy -c docker-compose.swarm.yml helpdesk
+	docker service update --force helpdesk_backend
+	docker service update --force helpdesk_frontend
 
 # Run migration inside any running Swarm backend replica.
 # The container already has DATABASE_URL pointing to infra_postgres.

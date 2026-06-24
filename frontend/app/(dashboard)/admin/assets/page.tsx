@@ -43,12 +43,6 @@ const STATUS_COLORS: Record<string, string> = {
   lost: "bg-red-500/15 text-red-400",
 };
 
-async function getCsrfHeaders(): Promise<HeadersInit> {
-  await fetch("/api/v1/auth/csrf-token");
-  const csrf =
-    document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
-  return { "Content-Type": "application/json", "X-CSRF-Token": csrf };
-}
 
 interface NewAssetForm {
   asset_tag: string;
@@ -163,7 +157,7 @@ export default function AdminAssetsPage() {
     setCreating(true);
     setError("");
     try {
-      const headers = await getCsrfHeaders();
+      const headers: HeadersInit = { "Content-Type": "application/json" };
       const body = {
         asset_tag: form.asset_tag || null,
         asset_type: form.asset_type,

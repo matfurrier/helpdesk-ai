@@ -48,7 +48,6 @@ class Settings(BaseSettings):
 
     # --- Session / JWT ---
     secret_key: str
-    csrf_secret: str = ""
     session_cookie_name: str = "__Host-sds_session"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480  # 8 h

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { fetchCsrfToken } from "@/lib/sse";
 
 interface TicketMessageOut {
   id: string; author_id: string; author_role: string; visibility: string; body: string; created_at: string;
@@ -60,9 +59,6 @@ function mimeIcon(mime: string) {
   return "📎";
 }
 
-function getCsrf() {
-  return document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
-}
 
 export function TicketActions({
   ticketId, currentStatus, assigneeId, categorySlug, categories,
@@ -107,42 +103,32 @@ export function TicketActions({
   const terminal = ["CLOSED", "CANCELLED"].includes(status);
   const canSend = !terminal && (body.trim().length > 0 || pendingFiles.length > 0);
 
-  async function withCsrf(fn: (csrf: string) => Promise<void>) {
-    setLoading(true); setError(null);
-    try { await fetchCsrfToken(); await fn(getCsrf()); }
-    catch (e) { setError(e instanceof Error ? e.message : "Erro"); }
-    finally { setLoading(false); }
-  }
-
   function handleStatusChange(newStatus: string) {
-    void withCsrf(async (csrf) => {
-      await api.patch(`/api/v1/tickets/${ticketId}/status`, { status: newStatus }, { headers: { "X-CSRF-Token": csrf } });
-      setStatus(newStatus);
-    });
+    setLoading(true); setError(null);
+    api.patch(`/api/v1/tickets/${ticketId}/status`, { status: newStatus })
+      .then(() => setStatus(newStatus))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Erro"))
+      .finally(() => setLoading(false));
   }
 
   function handleAssignTo(userId: string | null) {
-    void withCsrf(async (csrf) => {
-      await api.patch(`/api/v1/tickets/${ticketId}/assign`, { assignee_id: userId }, { headers: { "X-CSRF-Token": csrf } });
-      setAssignee(userId);
-    });
+    setLoading(true); setError(null);
+    api.patch(`/api/v1/tickets/${ticketId}/assign`, { assignee_id: userId })
+      .then(() => setAssignee(userId))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Erro"))
+      .finally(() => setLoading(false));
   }
 
   function handleCategoryChange(slug: string) {
-    void withCsrf(async (csrf) => {
-      await api.patch(
-        `/api/v1/tickets/${ticketId}/category`,
-        { category_slug: slug || null },
-        { headers: { "X-CSRF-Token": csrf } },
-      );
-      setCatSlug(slug || null);
-    });
+    setLoading(true); setError(null);
+    api.patch(`/api/v1/tickets/${ticketId}/category`, { category_slug: slug || null })
+      .then(() => setCatSlug(slug || null))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Erro"))
+      .finally(() => setLoading(false));
   }
 
   async function handleSend() {
     if (!canSend) return;
-    await fetchCsrfToken();
-    const csrf = getCsrf();
     setLoading(true); setError(null);
     try {
       // Send text message if body exists
@@ -150,7 +136,6 @@ export function TicketActions({
         const msg = await api.post<TicketMessageOut>(
           `/api/v1/tickets/${ticketId}/messages`,
           { body: body.trim(), visibility },
-          { headers: { "X-CSRF-Token": csrf } },
         );
         setMessages((prev) => [...prev, msg]);
         setBody("");
@@ -164,7 +149,7 @@ export function TicketActions({
           fd.append("file", file);
           const res = await fetch(`/api/v1/tickets/${ticketId}/attachments`, {
             method: "POST",
-            headers: { "X-CSRF-Token": csrf },
+            credentials: "include",
             body: fd,
           });
           if (res.ok) {

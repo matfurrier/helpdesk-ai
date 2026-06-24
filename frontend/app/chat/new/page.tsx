@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { fetchCsrfToken, sendMessage, type TriageResult } from "@/lib/sse";
+import { sendMessage, type TriageResult } from "@/lib/sse";
 
 interface Message {
   id: string;
@@ -38,15 +38,7 @@ export default function NewChatPage() {
   useEffect(() => {
     async function init() {
       try {
-        await fetchCsrfToken();
-        const csrf = document.cookie
-          .split("; ")
-          .find((c) => c.startsWith("csrf_token="))
-          ?.split("=")[1];
-
-        const conv = await api.post<ConversationOut>("/api/v1/chat/conversations", null, {
-          headers: csrf ? { "X-CSRF-Token": csrf } : {},
-        });
+        const conv = await api.post<ConversationOut>("/api/v1/chat/conversations", null);
         setConversationId(conv.id);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Erro ao iniciar conversa");
@@ -97,15 +89,9 @@ export default function NewChatPage() {
     setConverting(true);
     setError(null);
     try {
-      const csrf = document.cookie
-        .split("; ")
-        .find((c) => c.startsWith("csrf_token="))
-        ?.split("=")[1];
-
       const result = await api.post<ConvertOut>(
         `/api/v1/chat/conversations/${conversationId}/convert`,
         null,
-        { headers: csrf ? { "X-CSRF-Token": csrf } : {} },
       );
       setTicket(result);
     } catch (err) {

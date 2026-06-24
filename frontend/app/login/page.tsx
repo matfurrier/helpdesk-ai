@@ -29,11 +29,7 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const { csrf_token } = await api.get<{ csrf_token: string }>("/api/v1/auth/csrf-token");
-
-      await api.post("/api/v1/auth/login", data, {
-        headers: { "X-CSRF-Token": csrf_token },
-      });
+      await api.post("/api/v1/auth/login", data);
       router.push("/dashboard");
       router.refresh();
     } catch (err) {

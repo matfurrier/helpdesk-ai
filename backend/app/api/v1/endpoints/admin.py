@@ -30,15 +30,7 @@ _ADMIN_ROLES = frozenset({"it_admin", "it_lead"})
 _IT_ROLES = frozenset({"it_agent", "it_lead", "it_admin"})
 
 
-async def _check_csrf(request: Request) -> None:
-    cookie_token = request.cookies.get("csrf_token")
-    header_token = request.headers.get("X-CSRF-Token")
-    if not cookie_token or not header_token or cookie_token != header_token:
-        raise ForbiddenError("CSRF token inválido ou ausente")
-
-
 async def _admin_user(request: Request, response: Response) -> UserOut:
-    await _check_csrf(request)
     user = await get_current_user(request, response)
     if user.role not in _ADMIN_ROLES:
         raise ForbiddenError("Acesso restrito a administradores")

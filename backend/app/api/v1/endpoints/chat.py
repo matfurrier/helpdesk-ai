@@ -1,6 +1,5 @@
 """Chat/triage endpoints — Sprint 2.
 
-GET  /chat/csrf-token                          → issue CSRF cookie + body token
 POST /chat/conversations                       → create conversation
 POST /chat/conversations/{id}/messages         → send message, SSE stream (word-by-word)
 GET  /chat/conversations/{id}/messages         → message history
@@ -10,7 +9,6 @@ POST /chat/conversations/{id}/convert          → convert chat → ticket
 Security notes:
 - User message content stored REDACTED (PII tokens) — never plaintext.
 - Rate limits: chat 30/min, convert 10/hr — separate Lua ZSET keys.
-- CSRF double-submit cookie on all POSTs.
 - Convert: SELECT FOR UPDATE guards against duplicate tickets (F-01).
 - Transcript written to ticket uses re-redacted content (F-03).
 - PII token map purged after conversion (F-08 LGPD minimization).
@@ -21,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import secrets
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -35,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.config import settings
-from app.core.errors import ConflictError, ForbiddenError, NotFoundError, RateLimitError
+from app.core.errors import ConflictError, NotFoundError, RateLimitError
 from app.db.session import get_db
 from app.schemas.auth import UserOut
 from app.schemas.chat import ConversationOut, MessageCreate, MessageOut, TriageOutput
@@ -76,18 +73,6 @@ async def _get_redis(request: Request) -> Redis:
     return request.app.state.redis  # type: ignore[no-any-return]
 
 
-async def _check_csrf(request: Request) -> None:
-    cookie_token = request.cookies.get("csrf_token")
-    header_token = request.headers.get("X-CSRF-Token")
-    if not cookie_token or not header_token or cookie_token != header_token:
-        raise ForbiddenError("CSRF token inválido ou ausente")
-
-
-async def _csrf_then_user(request: Request, response: Response) -> UserOut:
-    await _check_csrf(request)
-    return await get_current_user(request, response)
-
-
 async def _check_rate_limit(
     user_id: str,
     redis: Redis,
@@ -118,25 +103,6 @@ async def _stream_triage(result: TriageOutput) -> AsyncGenerator[str, None]:
 
 
 # ---------------------------------------------------------------------------
-# CSRF token
-# ---------------------------------------------------------------------------
-
-
-@router.get("/csrf-token")
-async def get_csrf_token(response: Response) -> dict[str, str]:
-    token = secrets.token_hex(32)
-    response.set_cookie(
-        key="csrf_token",
-        value=token,
-        httponly=False,
-        samesite="lax",
-        secure=not settings.is_dev,
-        path="/",
-    )
-    return {"csrf_token": token}
-
-
-# ---------------------------------------------------------------------------
 # Conversations
 # ---------------------------------------------------------------------------
 
@@ -144,7 +110,7 @@ async def get_csrf_token(response: Response) -> dict[str, str]:
 @router.post("/conversations", status_code=201)
 async def create_conversation(
     request: Request,
-    current_user: UserOut = Depends(_csrf_then_user),
+    current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ConversationOut:
     redis = await _get_redis(request)
@@ -204,7 +170,7 @@ async def send_message(
     conversation_id: uuid.UUID,
     body: MessageCreate,
     request: Request,
-    current_user: UserOut = Depends(_csrf_then_user),
+    current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     orch: LLMOrchestrator = Depends(get_orchestrator),
 ) -> StreamingResponse:
@@ -353,7 +319,7 @@ async def get_messages(
 async def convert_conversation(
     conversation_id: uuid.UUID,
     request: Request,
-    current_user: UserOut = Depends(_csrf_then_user),
+    current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ConvertOut:
     """Convert an AI chat conversation into a support ticket.

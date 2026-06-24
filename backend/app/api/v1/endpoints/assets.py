@@ -32,13 +32,6 @@ log = structlog.get_logger()
 _IT_ROLES = frozenset({"it_agent", "it_lead", "it_admin"})
 
 
-async def _check_csrf(request: Request) -> None:
-    cookie = request.cookies.get("csrf_token")
-    header = request.headers.get("X-CSRF-Token")
-    if not cookie or not header or cookie != header:
-        raise ForbiddenError("CSRF token inválido ou ausente")
-
-
 async def _it_user(request: Request, response: Response) -> UserOut:
     user = await get_current_user(request, response)
     if user.role not in _IT_ROLES:
@@ -297,7 +290,6 @@ async def create_asset(
     current_user: UserOut = Depends(_it_user),
     db: AsyncSession = Depends(get_db),
 ) -> AssetOut:
-    await _check_csrf(request)
 
     res = await db.execute(
         text(
@@ -359,7 +351,6 @@ async def update_asset(
     current_user: UserOut = Depends(_it_user),
     db: AsyncSession = Depends(get_db),
 ) -> AssetOut:
-    await _check_csrf(request)
     row = await _get_asset_row(asset_id, db)
 
     before: dict[str, object] = {}
@@ -443,7 +434,6 @@ async def assign_asset(
     db: AsyncSession = Depends(get_db),
     sec_db: AsyncSession = Depends(get_security_db),
 ) -> AssetOut:
-    await _check_csrf(request)
     row = await _get_asset_row(asset_id, db)
 
     holder_name, holder_dept = await _lookup_user(payload.holder_id, sec_db)
@@ -509,7 +499,6 @@ async def return_asset(
     current_user: UserOut = Depends(_it_user),
     db: AsyncSession = Depends(get_db),
 ) -> AssetOut:
-    await _check_csrf(request)
     row = await _get_asset_row(asset_id, db)
 
     await db.execute(
@@ -559,7 +548,6 @@ async def retire_asset(
     current_user: UserOut = Depends(_it_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    await _check_csrf(request)
     row = await _get_asset_row(asset_id, db)
 
     await db.execute(

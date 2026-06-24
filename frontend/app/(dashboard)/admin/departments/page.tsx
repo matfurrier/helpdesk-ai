@@ -10,12 +10,6 @@ interface Department {
   created_at: string;
 }
 
-async function getCsrfHeaders(): Promise<HeadersInit> {
-  await fetch("/api/v1/auth/csrf-token");
-  const csrf = document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
-  return { "Content-Type": "application/json", "X-CSRF-Token": csrf };
-}
-
 export default function AdminDepartmentsPage() {
   const router = useRouter();
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -68,7 +62,7 @@ export default function AdminDepartmentsPage() {
     setCreating(true);
     setError("");
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const res = await fetch("/api/v1/admin/departments", {
         method: "POST",
         headers,
@@ -90,7 +84,7 @@ export default function AdminDepartmentsPage() {
     setSaving(dept.id);
     setError("");
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const res = await fetch(`/api/v1/admin/departments/${dept.id}`, {
         method: "PATCH",
         headers,
@@ -110,7 +104,7 @@ export default function AdminDepartmentsPage() {
     setDeleting(true);
     setError("");
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const res = await fetch(`/api/v1/admin/departments/${dept.id}`, {
         method: "DELETE",
         headers,

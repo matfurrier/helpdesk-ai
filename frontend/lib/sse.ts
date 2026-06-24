@@ -3,7 +3,7 @@
  *
  * Uses fetch + ReadableStream (not EventSource) because:
  * - EventSource doesn't support POST or cookies on all browsers/proxies.
- * - We need to send the message body and the CSRF token header.
+ * - We need to send the message body in the request.
  */
 
 import { buildApiUrl } from "./api";
@@ -47,20 +47,6 @@ export interface TicketDraft {
   tags: string[];
 }
 
-/** Fetch and cache the CSRF token from the server. Refreshes once per page load. */
-let _csrfToken: string | null = null;
-
-export async function fetchCsrfToken(): Promise<string> {
-  if (_csrfToken) return _csrfToken;
-  const res = await fetch(buildApiUrl("/api/v1/chat/csrf-token"), {
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Failed to fetch CSRF token");
-  const data = await res.json();
-  _csrfToken = data.csrf_token as string;
-  return _csrfToken;
-}
-
 /**
  * Stream a triage message from the server.
  *
@@ -72,8 +58,6 @@ export async function* streamChat(
   content: string,
   signal?: AbortSignal,
 ): AsyncGenerator<SseEvent, void, unknown> {
-  const csrfToken = await fetchCsrfToken();
-
   const res = await fetch(
     buildApiUrl(`/api/v1/chat/conversations/${conversationId}/messages`),
     {
@@ -81,7 +65,6 @@ export async function* streamChat(
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-CSRF-Token": csrfToken,
       },
       body: JSON.stringify({ content }),
       signal,

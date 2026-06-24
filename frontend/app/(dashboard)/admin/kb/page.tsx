@@ -29,12 +29,6 @@ const TRUST_COLOR: Record<string, string> = {
   external_doc: "bg-purple-500/15 text-purple-400",
 };
 
-async function getCsrfHeaders(): Promise<HeadersInit> {
-  await fetch("/api/v1/auth/csrf-token");
-  const csrf = document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
-  return { "Content-Type": "application/json", "X-CSRF-Token": csrf };
-}
-
 export default function AdminKbPage() {
   const router = useRouter();
   const [articles, setArticles] = useState<KbArticle[]>([]);
@@ -60,7 +54,7 @@ export default function AdminKbPage() {
   async function handleArchive(slug: string) {
     setActionLoading(slug + ":archive");
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const res = await fetch(`/api/v1/admin/kb/articles/${slug}/archive`, { method: "POST", headers });
       if (res.ok) await load();
       else setError("Erro ao arquivar artigo");
@@ -70,7 +64,7 @@ export default function AdminKbPage() {
   async function handleRestore(slug: string) {
     setActionLoading(slug + ":restore");
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const res = await fetch(`/api/v1/admin/kb/articles/${slug}/restore`, { method: "POST", headers });
       if (res.ok) await load();
       else setError("Erro ao restaurar artigo");

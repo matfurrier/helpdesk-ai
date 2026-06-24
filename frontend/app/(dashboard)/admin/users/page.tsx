@@ -20,12 +20,6 @@ const ROLE_COLOR: Record<string, string> = {
   it_lead: "bg-blue-500/15 text-blue-400",
 };
 
-async function getCsrfHeaders(): Promise<HeadersInit> {
-  await fetch("/api/v1/auth/csrf-token");
-  const csrf = document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
-  return { "Content-Type": "application/json", "X-CSRF-Token": csrf };
-}
-
 export default function AdminUsersPage() {
   const router = useRouter();
   const [users, setUsers] = useState<UserAdmin[]>([]);
@@ -51,7 +45,7 @@ export default function AdminUsersPage() {
   async function handleGrant(uuid: string, role: string) {
     setSaving(uuid + ":" + role);
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const res = await fetch(`/api/v1/admin/roles/${uuid}`, {
         method: "POST",
         headers,
@@ -69,7 +63,7 @@ export default function AdminUsersPage() {
   async function handleRevoke(uuid: string) {
     setSaving(uuid + ":revoke");
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const res = await fetch(`/api/v1/admin/roles/${uuid}`, { method: "DELETE", headers });
       if (!res.ok) {
         const err = await res.json() as { detail?: string };

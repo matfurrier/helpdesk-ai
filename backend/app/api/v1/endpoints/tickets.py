@@ -120,18 +120,6 @@ _TRANSITIONS: dict[str, list[str]] = {
 }
 
 
-async def _check_csrf(request: Request) -> None:
-    cookie_token = request.cookies.get("csrf_token")
-    header_token = request.headers.get("X-CSRF-Token")
-    if not cookie_token or not header_token or cookie_token != header_token:
-        raise ForbiddenError("CSRF token inválido ou ausente")
-
-
-async def _csrf_then_user(request: Request, response: Response) -> UserOut:
-    await _check_csrf(request)
-    return await get_current_user(request, response)
-
-
 def _is_agent(user: UserOut) -> bool:
     return user.role in _IT_ROLES
 
@@ -713,7 +701,7 @@ async def add_message(
     ticket_id: uuid.UUID,
     body: AddMessageIn,
     request: Request,
-    current_user: UserOut = Depends(_csrf_then_user),
+    current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TicketMessageOut:
     agent = _is_agent(current_user)
@@ -818,7 +806,7 @@ async def update_status(
     ticket_id: uuid.UUID,
     body: StatusUpdateIn,
     request: Request,
-    current_user: UserOut = Depends(_csrf_then_user),
+    current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TicketOut:
     if not _is_agent(current_user):
@@ -921,7 +909,7 @@ async def assign_ticket(
     ticket_id: uuid.UUID,
     body: AssignUpdateIn,
     request: Request,
-    current_user: UserOut = Depends(_csrf_then_user),
+    current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TicketOut:
     if not _is_agent(current_user):
@@ -979,7 +967,7 @@ async def update_category(
     ticket_id: uuid.UUID,
     body: CategoryUpdateIn,
     request: Request,
-    current_user: UserOut = Depends(_csrf_then_user),
+    current_user: UserOut = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> TicketOut:
     if not _is_agent(current_user):

@@ -17,12 +17,6 @@ interface UserOption {
   email: string;
 }
 
-async function getCsrfHeaders(): Promise<HeadersInit> {
-  await fetch("/api/v1/auth/csrf-token");
-  const csrf = document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
-  return { "Content-Type": "application/json", "X-CSRF-Token": csrf };
-}
-
 function AppDialog({
   open,
   onClose,
@@ -63,7 +57,7 @@ function AppDialog({
     setSaving(true);
     setError("");
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const payload = {
         app_name: appName.trim(),
         description: description.trim() || null,
@@ -235,7 +229,7 @@ export default function AdminApplicationsPage() {
     setDeleting(true);
     setError("");
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const res = await fetch(`/api/v1/admin/applications/${app.id}`, {
         method: "DELETE",
         headers,

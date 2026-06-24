@@ -72,12 +72,6 @@ const ACTION_LABELS: Record<string, string> = {
   updated: "Atualizado",
 };
 
-async function getCsrfHeaders(): Promise<HeadersInit> {
-  await fetch("/api/v1/auth/csrf-token");
-  const csrf =
-    document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
-  return { "Content-Type": "application/json", "X-CSRF-Token": csrf };
-}
 
 export default function AssetDetailPage() {
   const router = useRouter();
@@ -150,7 +144,7 @@ export default function AssetDetailPage() {
     if (!asset) return;
     setSaving(true);
     try {
-      const headers = await getCsrfHeaders();
+      const headers: HeadersInit = { "Content-Type": "application/json" };
       const body: Record<string, unknown> = {
         asset_tag: editTag || null,
         brand: editBrand || null,
@@ -205,7 +199,7 @@ export default function AssetDetailPage() {
     if (!asset || !selectedUser) return;
     setAssigning(true);
     try {
-      const headers = await getCsrfHeaders();
+      const headers: HeadersInit = { "Content-Type": "application/json" };
       const res = await fetch(`/api/v1/admin/assets/${asset.id}/assign`, {
         method: "POST",
         headers,
@@ -226,7 +220,7 @@ export default function AssetDetailPage() {
     if (!asset) return;
     setReturning(true);
     try {
-      const headers = await getCsrfHeaders();
+      const headers: HeadersInit = { "Content-Type": "application/json" };
       const res = await fetch(`/api/v1/admin/assets/${asset.id}/return`, {
         method: "POST",
         headers,
@@ -248,7 +242,7 @@ export default function AssetDetailPage() {
     if (!confirm("Desativar este equipamento? O titular atual será removido.")) return;
     setSaving(true);
     try {
-      const headers = await getCsrfHeaders();
+      const headers: HeadersInit = { "Content-Type": "application/json" };
       await fetch(`/api/v1/admin/assets/${asset.id}`, { method: "DELETE", headers });
       router.push("/admin/assets");
     } finally { setSaving(false); }

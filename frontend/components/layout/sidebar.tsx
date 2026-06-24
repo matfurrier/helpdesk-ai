@@ -26,10 +26,7 @@ export function Sidebar({ role, userName }: Props) {
 
   async function handleLogout() {
     try {
-      const csrfRes = await fetch("/api/v1/auth/csrf");
-      await csrfRes.json();
-      const csrf = document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
-      await fetch("/api/v1/auth/logout", { method: "POST", headers: { "X-CSRF-Token": csrf } });
+      await fetch("/api/v1/auth/logout", { method: "POST" });
     } finally {
       router.push("/login");
     }

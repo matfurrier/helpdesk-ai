@@ -24,12 +24,6 @@ const TRUST_LABEL: Record<string, string> = {
   external_doc: "Externo",
 };
 
-async function getCsrfHeaders(): Promise<HeadersInit> {
-  await fetch("/api/v1/auth/csrf-token");
-  const csrf = document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
-  return { "Content-Type": "application/json", "X-CSRF-Token": csrf };
-}
-
 export default function KbEditPage() {
   const params = useParams();
   const router = useRouter();
@@ -73,7 +67,7 @@ export default function KbEditPage() {
     setError("");
     setSuccess("");
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const tags = tagsRaw.split(",").map((t) => t.trim()).filter(Boolean);
 
       if (isNew) {

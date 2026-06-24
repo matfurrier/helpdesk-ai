@@ -28,12 +28,6 @@ interface UserMgmt {
   created_at: string | null;
 }
 
-async function getCsrfHeaders(): Promise<HeadersInit> {
-  await fetch("/api/v1/auth/csrf-token");
-  const csrf = document.cookie.split("; ").find((c) => c.startsWith("csrf_token="))?.split("=")[1] ?? "";
-  return { "Content-Type": "application/json", "X-CSRF-Token": csrf };
-}
-
 function UserDialog({
   open, onClose, onSave, user, departments, users,
 }: {
@@ -92,7 +86,7 @@ function UserDialog({
     setSaving(true);
     setError("");
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const payload: Record<string, unknown> = {
         name: name.trim(),
         email: email.trim(),
@@ -293,9 +287,10 @@ export default function AdminUsersMgmtPage() {
   function handleFilterActive(v: typeof filterActive) { setFilterActive(v); applyFilters(users, search, v); }
 
   async function handleToggleActive(u: UserMgmt) {
-    const headers = await getCsrfHeaders();
     await fetch(`/api/v1/admin/user-mgmt/${u.uuid}`, {
-      method: "PATCH", headers, body: JSON.stringify({ active: !u.active }),
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active: !u.active }),
     });
     await load();
   }
@@ -303,7 +298,7 @@ export default function AdminUsersMgmtPage() {
   async function handleDelete(u: UserMgmt) {
     setDeleting(true);
     try {
-      const headers = await getCsrfHeaders();
+      const headers = { "Content-Type": "application/json" };
       const res = await fetch(`/api/v1/admin/user-mgmt/${u.uuid}`, { method: "DELETE", headers });
       if (!res.ok) { setError("Erro ao excluir"); return; }
       setConfirmDelete(null);

@@ -30,9 +30,13 @@ class CategoryOut(BaseModel):
     sort_order: int
 
 
+TicketType = Literal["incident", "service_request", "change_request"]
+
+
 class SlaMatrixOut(BaseModel):
     model_config = ConfigDict(strict=True)
 
+    ticket_type: str
     priority: str
     first_response_hours: int
     resolution_hours: int
@@ -48,6 +52,7 @@ class TicketDraftOutput(BaseModel):
     summary: str = Field(max_length=1000)
     category_slug: str
     priority: Literal["low", "normal", "high", "urgent"]
+    ticket_type: TicketType = "incident"
     tags: list[str] = Field(default_factory=list)
 
 
@@ -76,6 +81,7 @@ class TicketOut(BaseModel):
     summary: str
     status: str
     priority: str
+    ticket_type: str = "incident"
     category_id: str | None
     category_name: str | None = None
     category_slug: str | None = None

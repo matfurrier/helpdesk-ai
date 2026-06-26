@@ -87,14 +87,15 @@ async def list_sla(
 ) -> list[SlaMatrixOut]:
     rows = await db.execute(
         text(
-            "SELECT priority, first_response_hours, resolution_hours, description "  # noqa: S608
+            "SELECT ticket_type, priority, first_response_hours, resolution_hours, description "  # noqa: S608
             "FROM helpdesk.sla_matrix "
-            "ORDER BY CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 "
-            "  WHEN 'normal' THEN 3 ELSE 4 END"
+            "ORDER BY CASE ticket_type WHEN 'incident' THEN 1 WHEN 'service_request' THEN 2 ELSE 3 END, "
+            "CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END"
         )
     )
     return [
         SlaMatrixOut(
+            ticket_type=str(r.ticket_type),
             priority=str(r.priority),
             first_response_hours=int(r.first_response_hours),
             resolution_hours=int(r.resolution_hours),
@@ -538,7 +539,7 @@ async def _fetch_ticket(
     """Fetch a single ticket and enforce authorization. Does NOT populate requester_name."""
     row = await db.execute(
         text(
-            "SELECT t.id, t.number, t.title, t.summary, t.status, t.priority, "  # noqa: S608
+            "SELECT t.id, t.number, t.title, t.summary, t.status, t.priority, t.ticket_type, "  # noqa: S608
             "       t.category_id, t.requester_id, t.assignee_id, t.conversation_id, "
             "       t.tags, t.created_at, t.updated_at, "
             "       t.first_response_due_at, t.resolution_due_at, "
@@ -573,6 +574,7 @@ async def _fetch_ticket(
         summary=str(r.summary),
         status=str(r.status),
         priority=str(r.priority),
+        ticket_type=str(r.ticket_type) if r.ticket_type else "incident",
         category_id=str(r.category_id) if r.category_id else None,
         category_name=str(r.category_name) if r.category_name else None,
         category_slug=str(r.category_slug) if r.category_slug else None,

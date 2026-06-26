@@ -610,6 +610,7 @@ class SlaUpdate(BaseModel):
 class SlaAdminOut(BaseModel):
     model_config = ConfigDict(strict=False)
 
+    ticket_type: str
     priority: str
     first_response_hours: int
     resolution_hours: int
@@ -625,15 +626,15 @@ async def list_sla_admin(
 ) -> list[SlaAdminOut]:
     rows = await db.execute(
         text(
-            "SELECT priority, first_response_hours, resolution_hours, description "
+            "SELECT ticket_type, priority, first_response_hours, resolution_hours, description "
             "FROM helpdesk.sla_matrix "
-            "ORDER BY CASE priority"
-            " WHEN 'urgent' THEN 1 WHEN 'high' THEN 2"
-            " WHEN 'normal' THEN 3 ELSE 4 END"
+            "ORDER BY CASE ticket_type WHEN 'incident' THEN 1 WHEN 'service_request' THEN 2 ELSE 3 END, "
+            "CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END"
         )
     )
     return [
         SlaAdminOut(
+            ticket_type=r.ticket_type,
             priority=r.priority,
             first_response_hours=int(r.first_response_hours),
             resolution_hours=int(r.resolution_hours),
@@ -643,32 +644,37 @@ async def list_sla_admin(
     ]
 
 
-@router.patch("/sla/{priority}", response_model=SlaAdminOut)
+@router.patch("/sla/{ticket_type}/{priority}", response_model=SlaAdminOut)
 async def update_sla(
+    ticket_type: str,
     priority: str,
     body: SlaUpdate,
     request: Request,
     current_user: UserOut = Depends(_admin_user),
     db: AsyncSession = Depends(get_db),
 ) -> SlaAdminOut:
-    _VALID = frozenset({"low", "normal", "high", "urgent"})
-    if priority not in _VALID:
+    _VALID_PRIORITY = frozenset({"low", "normal", "high", "urgent"})
+    _VALID_TYPE = frozenset({"incident", "service_request", "change_request"})
+    if priority not in _VALID_PRIORITY:
         raise HelpdeskError(f"Prioridade inválida: {priority}")
+    if ticket_type not in _VALID_TYPE:
+        raise HelpdeskError(f"Tipo inválido: {ticket_type}")
     res = await db.execute(
         text(
             "UPDATE helpdesk.sla_matrix "
             "SET first_response_hours = :frh, resolution_hours = :rh "
-            "WHERE priority = :priority "
-            "RETURNING priority, first_response_hours, resolution_hours, description"
+            "WHERE priority = :priority AND ticket_type = :ticket_type "
+            "RETURNING ticket_type, priority, first_response_hours, resolution_hours, description"
         ),
-        {"frh": body.first_response_hours, "rh": body.resolution_hours, "priority": priority},
+        {"frh": body.first_response_hours, "rh": body.resolution_hours, "priority": priority, "ticket_type": ticket_type},
     )
     r = res.fetchone()
     if r is None:
-        raise NotFoundError("Prioridade não encontrada")
+        raise NotFoundError("Combinação não encontrada")
     await db.commit()
-    log.info("admin.sla.updated", priority=priority, user_id=current_user.user_id)
+    log.info("admin.sla.updated", ticket_type=ticket_type, priority=priority, user_id=current_user.user_id)
     return SlaAdminOut(
+        ticket_type=r.ticket_type,
         priority=r.priority,
         first_response_hours=int(r.first_response_hours),
         resolution_hours=int(r.resolution_hours),

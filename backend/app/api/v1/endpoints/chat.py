@@ -442,15 +442,27 @@ async def convert_conversation(
     ticket_id_str: str | None = None
     ticket_number: int | None = None
 
-    # a) Fetch SLA deadlines based on priority
+    ticket_type = draft.ticket_type
+
+    # a) Fetch SLA deadlines based on priority + ticket_type (fallback: priority only)
     sla_row = await db.execute(
         text(
             "SELECT first_response_hours, resolution_hours "  # noqa: S608
-            "FROM helpdesk.sla_matrix WHERE priority = :priority LIMIT 1"
+            "FROM helpdesk.sla_matrix "
+            "WHERE priority = :priority AND ticket_type = :ticket_type LIMIT 1"
         ),
-        {"priority": priority},
+        {"priority": priority, "ticket_type": ticket_type},
     )
     sla = sla_row.fetchone()
+    if sla is None:
+        fallback = await db.execute(
+            text(
+                "SELECT first_response_hours, resolution_hours "  # noqa: S608
+                "FROM helpdesk.sla_matrix WHERE priority = :priority LIMIT 1"
+            ),
+            {"priority": priority},
+        )
+        sla = fallback.fetchone()
 
     # b) Create ticket (conversation_id set immediately — avoids second UPDATE)
     cat_cast = "CAST(:cat_id AS uuid)" if category_id else "NULL"
@@ -471,9 +483,9 @@ async def convert_conversation(
     ticket_result = await db.execute(
         text(
             f"INSERT INTO helpdesk.tickets "  # noqa: S608
-            f"(title, summary, status, priority, category_id, requester_id, "
+            f"(title, summary, status, priority, ticket_type, category_id, requester_id, "
             f"conversation_id, tags{sla_cols}) "
-            f"VALUES (:title, :summary, 'NEW', :priority, {cat_cast}, :requester_id, "
+            f"VALUES (:title, :summary, 'NEW', :priority, :ticket_type, {cat_cast}, :requester_id, "
             f"CAST(:conv_id AS uuid), :tags{sla_vals}) "
             f"RETURNING id, number"
         ),
@@ -481,6 +493,7 @@ async def convert_conversation(
             "title": draft.title[:200],
             "summary": draft.summary[:1000],
             "priority": priority,
+            "ticket_type": ticket_type,
             "cat_id": category_id,
             "requester_id": current_user.user_id,
             "conv_id": conv_id,

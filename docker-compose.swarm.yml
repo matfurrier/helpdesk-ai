@@ -41,6 +41,13 @@ x-backend-env: &backend-env
   SESSION_COOKIE_NAME: "__Host-sds_session"
   ENV: "production"
   LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+  MAIL_HOST: "${MAIL_HOST:-smtp.office365.com}"
+  MAIL_PORT: "${MAIL_PORT:-587}"
+  SMTP_USER: "${SMTP_USER}"
+  SMTP_PASSWORD: "${SMTP_PASSWORD}"
+  MAIL_FROM: "${MAIL_FROM}"
+  IT_TEAM_EMAIL: "${IT_TEAM_EMAIL}"
+  FRONTEND_URL: "${FRONTEND_URL}"
 
 services:
 

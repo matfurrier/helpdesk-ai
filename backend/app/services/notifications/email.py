@@ -133,8 +133,10 @@ def tpl_ticket_status(
     labels = {
         "OPEN": "Em aberto",
         "IN_PROGRESS": "Em andamento",
+        "WAITING_USER": "Aguardando sua resposta",
         "RESOLVED": "Resolvido",
         "CLOSED": "Encerrado",
+        "REOPENED": "Reaberto",
     }
     label = labels.get(new_status, new_status)
     subject = f"[{ticket_number}] Status atualizado: {label}"

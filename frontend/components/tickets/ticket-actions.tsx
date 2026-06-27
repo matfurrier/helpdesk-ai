@@ -71,7 +71,6 @@ export function TicketActions({
   const [messages, setMessages] = useState<TicketMessageOut[]>(initialMessages);
   const [attachments, setAttachments] = useState<AttachmentOut[]>([]);
   const [agents, setAgents] = useState<AgentOut[]>([]);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [body, setBody] = useState("");
   const [visibility, setVisibility] = useState<"public" | "internal">("public");
   const [loading, setLoading] = useState(false);
@@ -93,7 +92,7 @@ export function TicketActions({
 
   async function loadAttachments() {
     try {
-      const res = await fetch(`/api/v1/tickets/${ticketId}/attachments`);
+      const res = await fetch(`/api/v1/tickets/${ticketId}/attachments`, { credentials: "include" });
       if (res.ok) setAttachments(await res.json() as AttachmentOut[]);
     } catch { /* silent */ }
   }
@@ -101,7 +100,7 @@ export function TicketActions({
   const csatLocked = status === "CLOSED" && csatRespondedAt !== null;
   const nextStatuses = csatLocked ? [] : (NEXT_STATUSES[status] ?? []);
   const terminal = ["CLOSED", "CANCELLED"].includes(status);
-  const canSend = !terminal && (body.trim().length > 0 || pendingFiles.length > 0);
+  const canSend = !terminal && body.trim().length > 0;
 
   function handleStatusChange(newStatus: string) {
     setLoading(true); setError(null);
@@ -131,7 +130,6 @@ export function TicketActions({
     if (!canSend) return;
     setLoading(true); setError(null);
     try {
-      // Send text message if body exists
       if (body.trim()) {
         const msg = await api.post<TicketMessageOut>(
           `/api/v1/tickets/${ticketId}/messages`,
@@ -140,43 +138,40 @@ export function TicketActions({
         setMessages((prev) => [...prev, msg]);
         setBody("");
       }
-      // Upload pending files
-      if (pendingFiles.length > 0) {
-        setUploading(true);
-        const uploaded: AttachmentOut[] = [];
-        for (const file of pendingFiles) {
-          const fd = new FormData();
-          fd.append("file", file);
-          const res = await fetch(`/api/v1/tickets/${ticketId}/attachments`, {
-            method: "POST",
-            credentials: "include",
-            body: fd,
-          });
-          if (res.ok) {
-            uploaded.push(await res.json() as AttachmentOut);
-          } else {
-            const err = await res.json() as { detail?: string };
-            setError(err.detail ?? `Erro ao enviar ${file.name}`);
-          }
-        }
-        if (uploaded.length > 0) setAttachments((prev) => [...prev, ...uploaded]);
-        setPendingFiles([]);
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao enviar");
     } finally {
-      setLoading(false); setUploading(false);
+      setLoading(false);
     }
   }
 
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!e.target.files) return;
-    setPendingFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files = Array.from(e.target.files);
     e.target.value = "";
-  }
-
-  function removeFile(idx: number) {
-    setPendingFiles((prev) => prev.filter((_, i) => i !== idx));
+    setUploading(true); setError(null);
+    try {
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch(`/api/v1/tickets/${ticketId}/attachments`, {
+          method: "POST",
+          credentials: "include",
+          body: fd,
+        });
+        if (res.ok) {
+          const att = await res.json() as AttachmentOut;
+          setAttachments((prev) => [...prev, att]);
+        } else {
+          const err = await res.json() as { detail?: string };
+          setError(err.detail ?? `Erro ao enviar ${file.name}`);
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao enviar arquivo");
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
@@ -318,28 +313,8 @@ export function TicketActions({
               </div>
             )}
 
-            {/* Pending files chips */}
-            {pendingFiles.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {pendingFiles.map((f, i) => (
-                  <span key={i} className="flex items-center gap-1 text-[11px] bg-zinc-800 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded-md">
-                    <span>{mimeIcon(f.type)}</span>
-                    <span className="max-w-[140px] truncate">{f.name}</span>
-                    <span className="text-zinc-600">{fmtSize(f.size)}</span>
-                    <button
-                      onClick={() => removeFile(i)}
-                      className="ml-0.5 text-zinc-500 hover:text-red-400 transition-colors leading-none"
-                      aria-label="Remover arquivo"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
             <div className="flex gap-2 items-end">
-              {/* Hidden file input */}
+              {/* Hidden file input — upload imediato ao selecionar */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -349,17 +324,24 @@ export function TicketActions({
                 onChange={handleFileSelect}
               />
 
-              {/* Paperclip button */}
+              {/* Paperclip button — mostra spinner durante upload */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={loading}
+                disabled={loading || uploading}
                 title="Anexar arquivo (máx. 10 MB)"
                 className="flex-shrink-0 p-2 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-40"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                  <path fillRule="evenodd" d="M15.621 4.379a3 3 0 00-4.242 0l-7 7a1.5 1.5 0 002.122 2.121l7-7a.75.75 0 011.06 1.061l-7 7a3 3 0 11-4.242-4.243l7-7a4.5 4.5 0 016.364 6.364l-7 7a6 6 0 11-8.486-8.486l7-7a.75.75 0 011.06 1.061z" clipRule="evenodd" />
-                </svg>
+                {uploading ? (
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                    <path fillRule="evenodd" d="M15.621 4.379a3 3 0 00-4.242 0l-7 7a1.5 1.5 0 002.122 2.121l7-7a.75.75 0 011.06 1.061l-7 7a3 3 0 11-4.242-4.243l7-7a4.5 4.5 0 016.364 6.364l-7 7a6 6 0 11-8.486-8.486l7-7a.75.75 0 011.06 1.061z" clipRule="evenodd" />
+                  </svg>
+                )}
               </button>
 
               <textarea
@@ -375,7 +357,7 @@ export function TicketActions({
                 disabled={loading || !canSend}
                 className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed h-[calc(2*1.25rem+1rem)] whitespace-nowrap"
               >
-                {uploading ? "Enviando…" : loading ? "…" : "Enviar"}
+                {loading ? "…" : "Enviar"}
               </button>
             </div>
           </div>

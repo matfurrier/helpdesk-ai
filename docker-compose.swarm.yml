@@ -29,6 +29,7 @@ x-backend-env: &backend-env
   MINIO_BUCKET: "${MINIO_BUCKET:-helpdesk-attachments}"
   CLAMAV_HOST: "clamav"
   CLAMAV_PORT: "3310"
+  CLAMAV_FAIL_OPEN: "${CLAMAV_FAIL_OPEN:-false}"
   OPENAI_API_KEY: "${OPENAI_API_KEY}"
   OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o-mini}"
   OPENAI_EMBED_MODEL: "${OPENAI_EMBED_MODEL:-text-embedding-3-small}"
@@ -140,6 +141,8 @@ services:
   # ── ClamAV ────────────────────────────────────────────────────────────────
   clamav:
     image: clamav/clamav:latest
+    volumes:
+      - helpdesk_clamav:/var/lib/clamav  # persiste assinaturas entre restarts (~300MB)
     networks:
       - helpdesk_net
     deploy:
@@ -148,9 +151,9 @@ services:
         condition: on-failure
       resources:
         limits:
-          memory: 1G     # ClamAV signature DB is large
+          memory: 2G     # ClamAV precisa de ~1.5G para carregar main+daily.cvd
         reservations:
-          memory: 512M
+          memory: 1G
 
 networks:
   helpdesk_net:
@@ -164,3 +167,4 @@ networks:
 volumes:
   helpdesk_redis:
   helpdesk_minio:
+  helpdesk_clamav:

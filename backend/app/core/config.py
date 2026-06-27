@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     # --- ClamAV ---
     clamav_host: str = "clamav"
     clamav_port: int = 3310
+    # ponytail: fail-open permite upload quando ClamAV está indisponível; manter False em prod normalmente
+    clamav_fail_open: bool = False
 
     # --- AI providers ---
     openai_api_key: str = ""

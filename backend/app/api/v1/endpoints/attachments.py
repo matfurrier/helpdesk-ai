@@ -88,12 +88,12 @@ async def upload_attachment(
     if mime not in _ALLOWED_MIME:
         raise HTTPException(415, detail=f"Tipo de arquivo não permitido: {mime}")
 
-    # ClamAV scan — fail open only in dev
+    # ClamAV scan — fail open in dev or when CLAMAV_FAIL_OPEN=true
     try:
         is_clean, scan_result = await scanner.scan(data)
     except OSError as exc:
-        if settings.is_dev:
-            log.warning("clamav.unreachable_dev_skip", error=str(exc))
+        if settings.is_dev or settings.clamav_fail_open:
+            log.warning("clamav.unreachable_skip", error=str(exc), fail_open=settings.clamav_fail_open)
             is_clean, scan_result = True, "skipped"
         else:
             raise HTTPException(503, detail="Antivírus indisponível — tente mais tarde") from exc

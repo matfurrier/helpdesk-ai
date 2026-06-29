@@ -393,6 +393,7 @@ async def list_tickets(
     priority: Annotated[str | None, Query()] = None,
     category_slug: Annotated[str | None, Query()] = None,
     unassigned: Annotated[bool, Query()] = False,
+    exclude_closed: Annotated[bool, Query()] = False,
     year: Annotated[int | None, Query()] = None,
     month: Annotated[int | None, Query()] = None,
     dept_id: Annotated[int | None, Query()] = None,
@@ -424,6 +425,9 @@ async def list_tickets(
     if category_slug:
         conditions.append("c.slug = :cat_slug")
         params["cat_slug"] = category_slug
+
+    if exclude_closed:
+        conditions.append("t.status NOT IN ('CLOSED', 'CANCELLED')")
 
     if unassigned and agent:
         conditions.append("t.assignee_id IS NULL AND t.status = ANY(:active)")

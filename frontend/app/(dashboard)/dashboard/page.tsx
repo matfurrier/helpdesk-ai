@@ -39,6 +39,7 @@ function buildFilterQuery(sp: Record<string, string | string[] | undefined>) {
   if (sp.user_id) p.set("user_id", String(sp.user_id));
   if (sp.status) p.set("status", String(sp.status));
   if (sp.priority) p.set("priority", String(sp.priority));
+  if (sp.exclude_closed === "1") p.set("exclude_closed", "true");
   const qs = p.toString();
   return qs ? `?${qs}` : "";
 }

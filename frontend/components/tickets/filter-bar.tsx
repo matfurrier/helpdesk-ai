@@ -75,6 +75,7 @@ export function FilterBar({ options }: Props) {
   const categorySlug = searchParams.get("category_slug") ?? "";
   const status = searchParams.get("status") ?? "";
   const priority = searchParams.get("priority") ?? "";
+  const excludeClosed = searchParams.get("exclude_closed") === "1";
 
   const update = useCallback(
     (key: string, value: string) => {
@@ -90,7 +91,7 @@ export function FilterBar({ options }: Props) {
     router.push(pathname);
   }, [router, pathname]);
 
-  const hasFilters = year || month || deptId || userId || categorySlug || status || priority;
+  const hasFilters = year || month || deptId || userId || categorySlug || status || priority || excludeClosed;
 
   const selectCls =
     "bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500/50 min-w-[120px]";
@@ -189,6 +190,17 @@ export function FilterBar({ options }: Props) {
           </option>
         ))}
       </select>
+
+      <button
+        onClick={() => update("exclude_closed", excludeClosed ? "" : "1")}
+        className={`text-xs px-2 py-1.5 rounded-md border transition-colors ${
+          excludeClosed
+            ? "bg-blue-600/20 border-blue-500/50 text-blue-400"
+            : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200"
+        }`}
+      >
+        Ocultar fechados
+      </button>
 
       {hasFilters && (
         <button

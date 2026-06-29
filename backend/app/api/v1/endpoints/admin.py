@@ -1184,6 +1184,7 @@ async def delete_application(
 class UserMgmtOut(BaseModel):
     model_config = ConfigDict(strict=False)
 
+    id: int | None = None
     uuid: str
     name: str
     email: str
@@ -1204,6 +1205,11 @@ class UserMgmtOut(BaseModel):
     dredepartmentadmin: bool
     override_role: str | None
     created_at: str | None
+    cpf: str | None = None
+    rg: str | None = None
+    matricula: str | None = None
+    phone: str | None = None
+    mobile: str | None = None
 
 
 class UserMgmtCreate(BaseModel):
@@ -1222,6 +1228,11 @@ class UserMgmtCreate(BaseModel):
     sso_guarita: bool = False
     dreadmin: bool = False
     dredepartmentadmin: bool = False
+    cpf: str | None = None
+    rg: str | None = None
+    matricula: str | None = None
+    phone: str | None = None
+    mobile: str | None = None
 
 
 class UserMgmtUpdate(BaseModel):
@@ -1241,6 +1252,11 @@ class UserMgmtUpdate(BaseModel):
     sso_guarita: bool | None = None
     dreadmin: bool | None = None
     dredepartmentadmin: bool | None = None
+    cpf: str | None = None
+    rg: str | None = None
+    matricula: str | None = None
+    phone: str | None = None
+    mobile: str | None = None
 
 
 @router.get("/user-mgmt", response_model=list[UserMgmtOut])
@@ -1256,6 +1272,11 @@ async def list_users_mgmt(
     )
     overrides: dict[str, str] = {r.user_uuid: r.role for r in overrides_res.fetchall()}
 
+    profiles_res = await db.execute(
+        text("SELECT user_uuid, cpf, rg, matricula, phone, mobile FROM helpdesk.user_profiles")
+    )
+    profiles: dict[str, object] = {r.user_uuid: r for r in profiles_res.fetchall()}
+
     rows = await sec_db.execute(
         text(
             "SELECT u.id, u.uuid::text, u.name, u.email, u.login, u.jobtitle, "
@@ -1270,8 +1291,11 @@ async def list_users_mgmt(
             "ORDER BY u.name"
         )
     )
-    return [
-        UserMgmtOut(
+    result = []
+    for r in rows.fetchall():
+        p = profiles.get(str(r.uuid))
+        result.append(UserMgmtOut(
+            id=r.id,
             uuid=r.uuid,
             name=r.name,
             email=r.email,
@@ -1292,9 +1316,34 @@ async def list_users_mgmt(
             dredepartmentadmin=bool(r.dredepartmentadmin),
             override_role=overrides.get(r.uuid),
             created_at=r.createdat,
-        )
-        for r in rows.fetchall()
-    ]
+            cpf=p.cpf if p else None,
+            rg=p.rg if p else None,
+            matricula=p.matricula if p else None,
+            phone=p.phone if p else None,
+            mobile=p.mobile if p else None,
+        ))
+    return result
+
+
+async def _upsert_profile(db: AsyncSession, user_uuid: str, body: UserMgmtCreate | UserMgmtUpdate) -> None:
+    """UPSERT helpdesk.user_profiles when any document field is present."""
+    if not any([body.cpf, body.rg, body.matricula, body.phone, body.mobile]):
+        return
+    await db.execute(
+        text(
+            "INSERT INTO helpdesk.user_profiles (user_uuid, cpf, rg, matricula, phone, mobile) "
+            "VALUES (:uuid, :cpf, :rg, :mat, :phone, :mobile) "
+            "ON CONFLICT (user_uuid) DO UPDATE SET "
+            "cpf = COALESCE(EXCLUDED.cpf, helpdesk.user_profiles.cpf), "
+            "rg = COALESCE(EXCLUDED.rg, helpdesk.user_profiles.rg), "
+            "matricula = COALESCE(EXCLUDED.matricula, helpdesk.user_profiles.matricula), "
+            "phone = COALESCE(EXCLUDED.phone, helpdesk.user_profiles.phone), "
+            "mobile = COALESCE(EXCLUDED.mobile, helpdesk.user_profiles.mobile), "
+            "updated_at = now()"
+        ),
+        {"uuid": user_uuid, "cpf": body.cpf, "rg": body.rg,
+         "mat": body.matricula, "phone": body.phone, "mobile": body.mobile},
+    )
 
 
 @router.post("/user-mgmt", response_model=UserMgmtOut, status_code=201)
@@ -1345,6 +1394,9 @@ async def create_user_mgmt(
     r = row.fetchone()
     await sec_db.commit()
 
+    await _upsert_profile(db, new_uuid, body)
+    await db.commit()
+
     dept_row = None
     if r.departmentid:
         dr = await sec_db.execute(
@@ -1353,6 +1405,7 @@ async def create_user_mgmt(
         dept_row = dr.fetchone()
 
     return UserMgmtOut(
+        id=r.id,
         uuid=r.uuid,
         name=r.name,
         email=r.email,
@@ -1373,6 +1426,11 @@ async def create_user_mgmt(
         dredepartmentadmin=bool(r.dredepartmentadmin),
         override_role=None,
         created_at=r.createdat,
+        cpf=body.cpf,
+        rg=body.rg,
+        matricula=body.matricula,
+        phone=body.phone,
+        mobile=body.mobile,
     )
 
 
@@ -1450,11 +1508,20 @@ async def update_user_mgmt(
     u = updated.fetchone()
     await sec_db.commit()
 
+    await _upsert_profile(db, user_uuid, body)
+
     overrides_res = await db.execute(
         text("SELECT role FROM helpdesk.role_overrides WHERE user_uuid = :uuid"),
         {"uuid": user_uuid},
     )
     override_row = overrides_res.fetchone()
+
+    profile_res = await db.execute(
+        text("SELECT cpf, rg, matricula, phone, mobile FROM helpdesk.user_profiles WHERE user_uuid = :uuid"),
+        {"uuid": user_uuid},
+    )
+    await db.commit()
+    p = profile_res.fetchone()
 
     dept_row = None
     if u.departmentid:
@@ -1471,6 +1538,7 @@ async def update_user_mgmt(
         sup_row = sr.fetchone()
 
     return UserMgmtOut(
+        id=u.id,
         uuid=u.uuid,
         name=u.name,
         email=u.email,
@@ -1491,6 +1559,11 @@ async def update_user_mgmt(
         dredepartmentadmin=bool(u.dredepartmentadmin),
         override_role=override_row.role if override_row else None,
         created_at=u.createdat,
+        cpf=p.cpf if p else None,
+        rg=p.rg if p else None,
+        matricula=p.matricula if p else None,
+        phone=p.phone if p else None,
+        mobile=p.mobile if p else None,
     )
 
 

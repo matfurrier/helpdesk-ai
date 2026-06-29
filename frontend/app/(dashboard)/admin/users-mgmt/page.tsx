@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 interface Department { id: number; name: string; }
 
 interface UserMgmt {
+  id: number | null;
   uuid: string;
   name: string;
   email: string;
@@ -26,6 +27,11 @@ interface UserMgmt {
   dredepartmentadmin: boolean;
   override_role: string | null;
   created_at: string | null;
+  cpf: string | null;
+  rg: string | null;
+  matricula: string | null;
+  phone: string | null;
+  mobile: string | null;
 }
 
 function UserDialog({
@@ -53,6 +59,11 @@ function UserDialog({
   const [dreadmin, setDreadmin] = useState(false);
   const [dredeptadmin, setDredeptadmin] = useState(false);
   const [active, setActive] = useState(true);
+  const [cpf, setCpf] = useState("");
+  const [rg, setRg] = useState("");
+  const [matricula, setMatricula] = useState("");
+  const [phone, setPhone] = useState("");
+  const [mobile, setMobile] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -72,8 +83,12 @@ function UserDialog({
     setDreadmin(user?.dreadmin ?? false);
     setDredeptadmin(user?.dredepartmentadmin ?? false);
     setActive(user?.active ?? true);
-    // find superior uuid from users list
-    const sup = users.find((u) => u.department_id === user?.superior_id || u.name === user?.superior_name);
+    setCpf(user?.cpf ?? "");
+    setRg(user?.rg ?? "");
+    setMatricula(user?.matricula ?? "");
+    setPhone(user?.phone ?? "");
+    setMobile(user?.mobile ?? "");
+    const sup = users.find((u) => u.name === user?.superior_name);
     setSupUuid(sup?.uuid ?? "");
     setError("");
   }, [user, open, users]);
@@ -87,12 +102,14 @@ function UserDialog({
     setError("");
     try {
       const headers = { "Content-Type": "application/json" };
+      const supUser = users.find((u) => u.uuid === supUuid);
       const payload: Record<string, unknown> = {
         name: name.trim(),
         email: email.trim(),
         login: login.trim() || email.split("@")[0],
         jobtitle: jobtitle.trim() || null,
         department_id: deptId !== "" ? Number(deptId) : null,
+        superior_id: supUser?.id ?? null,
         sso_manager: ssoManager,
         sso_auditor: ssoAuditor,
         procure_manager: procureManager,
@@ -100,13 +117,14 @@ function UserDialog({
         sso_guarita: ssoGuarita,
         dreadmin: dreadmin,
         dredepartmentadmin: dredeptadmin,
+        cpf: cpf.trim() || null,
+        rg: rg.trim() || null,
+        matricula: matricula.trim() || null,
+        phone: phone.trim() || null,
+        mobile: mobile.trim() || null,
       };
       if (password.trim()) payload.password = password.trim();
       if (!user) payload.password = password.trim();
-
-      // find superior_id from uuid
-      const supUser = users.find((u) => u.uuid === supUuid);
-      payload.superior_id = supUser?.department_id ?? null; // We actually need the integer id
 
       const url = user ? `/api/v1/admin/user-mgmt/${user.uuid}` : "/api/v1/admin/user-mgmt";
       const method = user ? "PATCH" : "POST";
@@ -195,6 +213,37 @@ function UserDialog({
               </label>
             </div>
           )}
+
+          <div className="col-span-2 space-y-2">
+            <p className="text-[11px] text-zinc-500 font-medium uppercase tracking-wide">Documentos e Contato</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">CPF</label>
+                <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">RG</label>
+                <input value={rg} onChange={(e) => setRg(e.target.value)} placeholder="00.000.000-0"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Matrícula</label>
+                <input value={matricula} onChange={(e) => setMatricula(e.target.value)} placeholder="Ex: 00123"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Telefone</label>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(00) 0000-0000"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+              </div>
+              <div>
+                <label className="block text-xs text-zinc-500 mb-1">Celular</label>
+                <input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="(00) 9 0000-0000"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+              </div>
+            </div>
+          </div>
 
           <div className="col-span-2 space-y-2">
             <p className="text-[11px] text-zinc-500 font-medium uppercase tracking-wide">Permissões do sistema</p>

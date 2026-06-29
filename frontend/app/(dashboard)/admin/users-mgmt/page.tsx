@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 interface Department { id: number; name: string; }
+interface Application { id: number; app_name: string; description: string | null; }
 
 interface UserMgmt {
   id: number | null;
@@ -32,10 +33,11 @@ interface UserMgmt {
   matricula: string | null;
   phone: string | null;
   mobile: string | null;
+  app_ids: number[];
 }
 
 function UserDialog({
-  open, onClose, onSave, user, departments, users,
+  open, onClose, onSave, user, departments, users, applications,
 }: {
   open: boolean;
   onClose: () => void;
@@ -43,6 +45,7 @@ function UserDialog({
   user: UserMgmt | null;
   departments: Department[];
   users: UserMgmt[];
+  applications: Application[];
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -64,6 +67,7 @@ function UserDialog({
   const [matricula, setMatricula] = useState("");
   const [phone, setPhone] = useState("");
   const [mobile, setMobile] = useState("");
+  const [appIds, setAppIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -88,6 +92,7 @@ function UserDialog({
     setMatricula(user?.matricula ?? "");
     setPhone(user?.phone ?? "");
     setMobile(user?.mobile ?? "");
+    setAppIds(user?.app_ids ?? []);
     const sup = users.find((u) => u.name === user?.superior_name);
     setSupUuid(sup?.uuid ?? "");
     setError("");
@@ -122,6 +127,7 @@ function UserDialog({
         matricula: matricula.trim() || null,
         phone: phone.trim() || null,
         mobile: mobile.trim() || null,
+        app_ids: appIds,
       };
       if (password.trim()) payload.password = password.trim();
       if (!user) payload.password = password.trim();
@@ -264,6 +270,29 @@ function UserDialog({
               ))}
             </div>
           </div>
+
+          {applications.length > 0 && (
+            <div className="col-span-2 space-y-2">
+              <p className="text-[11px] text-zinc-500 font-medium uppercase tracking-wide">Aplicações</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                {applications.map((app) => (
+                  <label key={app.id} className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300" title={app.description ?? undefined}>
+                    <input
+                      type="checkbox"
+                      className="accent-blue-500"
+                      checked={appIds.includes(app.id)}
+                      onChange={(e) =>
+                        setAppIds((prev) =>
+                          e.target.checked ? [...prev, app.id] : prev.filter((id) => id !== app.id)
+                        )
+                      }
+                    />
+                    {app.app_name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 justify-end pt-1">
@@ -288,6 +317,7 @@ export default function AdminUsersMgmtPage() {
   const router = useRouter();
   const [users, setUsers] = useState<UserMgmt[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [applications, setApplications] = useState<Application[]>([]);
   const [filtered, setFiltered] = useState<UserMgmt[]>([]);
   const [search, setSearch] = useState("");
   const [filterActive, setFilterActive] = useState<"all" | "active" | "inactive">("all");
@@ -305,9 +335,10 @@ export default function AdminUsersMgmtPage() {
     setLoading(true);
     setError("");
     try {
-      const [usersRes, deptsRes] = await Promise.all([
+      const [usersRes, deptsRes, appsRes] = await Promise.all([
         fetch("/api/v1/admin/user-mgmt"),
         fetch("/api/v1/admin/departments"),
+        fetch("/api/v1/admin/applications"),
       ]);
       if (usersRes.status === 401) { router.push("/login"); return; }
       if (!usersRes.ok) { setError("Erro ao carregar usuários"); return; }
@@ -315,6 +346,7 @@ export default function AdminUsersMgmtPage() {
       setUsers(usersData);
       applyFilters(usersData, search, filterActive);
       if (deptsRes.ok) setDepartments(await deptsRes.json() as Department[]);
+      if (appsRes.ok) setApplications(await appsRes.json() as Application[]);
     } catch { setError("Erro de rede"); }
     finally { setLoading(false); }
   }
@@ -477,6 +509,7 @@ export default function AdminUsersMgmtPage() {
         user={selected}
         departments={departments}
         users={users}
+        applications={applications}
       />
 
       {confirmDelete && (

@@ -1055,6 +1055,34 @@ async def _sync_app_users(sec_db: AsyncSession, app_id: int, user_uuids: list[st
             )
 
 
+async def _fetch_user_apps(sec_db: AsyncSession, user_uuid: str) -> list[int]:
+    """Return app_ids assigned to a user."""
+    rows = await sec_db.execute(
+        text(
+            "SELECT ua.app_id FROM public.user_applications ua "
+            "JOIN public.users u ON u.id = ua.user_id WHERE u.uuid = :uuid"
+        ),
+        {"uuid": user_uuid},
+    )
+    return [r.app_id for r in rows.fetchall()]
+
+
+async def _sync_user_apps(sec_db: AsyncSession, user_id: int, app_ids: list[int]) -> None:
+    """Replace app assignments for a user."""
+    await sec_db.execute(
+        text("DELETE FROM public.user_applications WHERE user_id = :uid"),
+        {"uid": user_id},
+    )
+    for aid in app_ids:
+        await sec_db.execute(
+            text(
+                "INSERT INTO public.user_applications (user_id, app_id, createdat, updatedat) "
+                "VALUES (:uid, :aid, NOW(), NOW())"
+            ),
+            {"uid": user_id, "aid": aid},
+        )
+
+
 @router.get("/applications", response_model=list[ApplicationOut])
 async def list_applications(
     request: Request,
@@ -1210,6 +1238,7 @@ class UserMgmtOut(BaseModel):
     matricula: str | None = None
     phone: str | None = None
     mobile: str | None = None
+    app_ids: list[int] = []
 
 
 class UserMgmtCreate(BaseModel):
@@ -1233,6 +1262,7 @@ class UserMgmtCreate(BaseModel):
     matricula: str | None = None
     phone: str | None = None
     mobile: str | None = None
+    app_ids: list[int] = []
 
 
 class UserMgmtUpdate(BaseModel):
@@ -1257,6 +1287,7 @@ class UserMgmtUpdate(BaseModel):
     matricula: str | None = None
     phone: str | None = None
     mobile: str | None = None
+    app_ids: list[int] | None = None
 
 
 @router.get("/user-mgmt", response_model=list[UserMgmtOut])
@@ -1291,6 +1322,17 @@ async def list_users_mgmt(
             "ORDER BY u.name"
         )
     )
+    ua_rows = await sec_db.execute(
+        text(
+            "SELECT u.uuid::text AS user_uuid, ua.app_id "
+            "FROM public.user_applications ua "
+            "JOIN public.users u ON u.id = ua.user_id"
+        )
+    )
+    user_apps: dict[str, list[int]] = {}
+    for ua in ua_rows.fetchall():
+        user_apps.setdefault(ua.user_uuid, []).append(ua.app_id)
+
     result = []
     for r in rows.fetchall():
         p = profiles.get(str(r.uuid))
@@ -1321,6 +1363,7 @@ async def list_users_mgmt(
             matricula=p.matricula if p else None,
             phone=p.phone if p else None,
             mobile=p.mobile if p else None,
+            app_ids=user_apps.get(r.uuid, []),
         ))
     return result
 
@@ -1392,6 +1435,8 @@ async def create_user_mgmt(
         },
     )
     r = row.fetchone()
+    if body.app_ids:
+        await _sync_user_apps(sec_db, r.id, body.app_ids)
     await sec_db.commit()
 
     await _upsert_profile(db, new_uuid, body)
@@ -1431,6 +1476,7 @@ async def create_user_mgmt(
         matricula=body.matricula,
         phone=body.phone,
         mobile=body.mobile,
+        app_ids=body.app_ids,
     )
 
 
@@ -1506,6 +1552,8 @@ async def update_user_mgmt(
         fields,
     )
     u = updated.fetchone()
+    if body.app_ids is not None:
+        await _sync_user_apps(sec_db, u.id, body.app_ids)
     await sec_db.commit()
 
     await _upsert_profile(db, user_uuid, body)
@@ -1537,6 +1585,8 @@ async def update_user_mgmt(
         )
         sup_row = sr.fetchone()
 
+    app_ids_out = await _fetch_user_apps(sec_db, user_uuid)
+
     return UserMgmtOut(
         id=u.id,
         uuid=u.uuid,
@@ -1564,6 +1614,7 @@ async def update_user_mgmt(
         matricula=p.matricula if p else None,
         phone=p.phone if p else None,
         mobile=p.mobile if p else None,
+        app_ids=app_ids_out,
     )
 
 

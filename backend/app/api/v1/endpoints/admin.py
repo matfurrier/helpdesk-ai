@@ -1231,6 +1231,8 @@ class UserMgmtOut(BaseModel):
     sso_guarita: bool
     dreadmin: bool
     dredepartmentadmin: bool
+    supplier_docs_manager: bool
+    supplier_docs_auditor: bool
     override_role: str | None
     created_at: str | None
     cpf: str | None = None
@@ -1257,6 +1259,8 @@ class UserMgmtCreate(BaseModel):
     sso_guarita: bool = False
     dreadmin: bool = False
     dredepartmentadmin: bool = False
+    supplier_docs_manager: bool = False
+    supplier_docs_auditor: bool = False
     cpf: str | None = None
     rg: str | None = None
     matricula: str | None = None
@@ -1282,6 +1286,8 @@ class UserMgmtUpdate(BaseModel):
     sso_guarita: bool | None = None
     dreadmin: bool | None = None
     dredepartmentadmin: bool | None = None
+    supplier_docs_manager: bool | None = None
+    supplier_docs_auditor: bool | None = None
     cpf: str | None = None
     rg: str | None = None
     matricula: str | None = None
@@ -1315,7 +1321,8 @@ async def list_users_mgmt(
             "u.superiorid, s.name AS superior_name, "
             "u.active, u.role, u.sso_manager, u.sso_auditor, "
             "u.procure_manager, u.sso_limpeza, u.sso_guarita, "
-            "u.dreadmin, u.dredepartmentadmin, u.createdat::text "
+            "u.dreadmin, u.dredepartmentadmin, "
+            "u.supplier_docs_manager, u.supplier_docs_auditor, u.createdat::text "
             "FROM public.users u "
             "LEFT JOIN public.department d ON d.id = u.departmentid "
             "LEFT JOIN public.users s ON s.id = u.superiorid "
@@ -1356,6 +1363,8 @@ async def list_users_mgmt(
             sso_guarita=bool(r.sso_guarita),
             dreadmin=bool(r.dreadmin),
             dredepartmentadmin=bool(r.dredepartmentadmin),
+            supplier_docs_manager=bool(r.supplier_docs_manager),
+            supplier_docs_auditor=bool(r.supplier_docs_auditor),
             override_role=overrides.get(r.uuid),
             created_at=r.createdat,
             cpf=p.cpf if p else None,
@@ -1407,13 +1416,14 @@ async def create_user_mgmt(
             "INSERT INTO public.users "
             "(uuid, name, email, password, login, jobtitle, departmentid, superiorid, "
             "active, role, sso_manager, sso_auditor, procure_manager, sso_limpeza, "
-            "sso_guarita, dreadmin, dredepartmentadmin, createdat, updatedat) "
+            "sso_guarita, dreadmin, dredepartmentadmin, supplier_docs_manager, supplier_docs_auditor, "
+            "createdat, updatedat) "
             "VALUES (:uuid, :name, :email, :password, :login, :jobtitle, :dept, :sup, "
-            "1, :role, :sso_m, :sso_a, :proc_m, :sso_l, :sso_g, :dra, :drda, NOW(), NOW()) "
+            "1, :role, :sso_m, :sso_a, :proc_m, :sso_l, :sso_g, :dra, :drda, :sd_m, :sd_a, NOW(), NOW()) "
             "RETURNING id, uuid::text, name, email, login, jobtitle, "
             "departmentid, superiorid, active, role, sso_manager, sso_auditor, "
             "procure_manager, sso_limpeza, sso_guarita, dreadmin, dredepartmentadmin, "
-            "createdat::text"
+            "supplier_docs_manager, supplier_docs_auditor, createdat::text"
         ),
         {
             "uuid": new_uuid,
@@ -1432,6 +1442,8 @@ async def create_user_mgmt(
             "sso_g": body.sso_guarita,
             "dra": 1 if body.dreadmin else 0,
             "drda": 1 if body.dredepartmentadmin else 0,
+            "sd_m": body.supplier_docs_manager,
+            "sd_a": body.supplier_docs_auditor,
         },
     )
     r = row.fetchone()
@@ -1469,6 +1481,8 @@ async def create_user_mgmt(
         sso_guarita=bool(r.sso_guarita),
         dreadmin=bool(r.dreadmin),
         dredepartmentadmin=bool(r.dredepartmentadmin),
+        supplier_docs_manager=bool(r.supplier_docs_manager),
+        supplier_docs_auditor=bool(r.supplier_docs_auditor),
         override_role=None,
         created_at=r.createdat,
         cpf=body.cpf,
@@ -1538,6 +1552,10 @@ async def update_user_mgmt(
         _set("dreadmin", 1 if body.dreadmin else 0)
     if body.dredepartmentadmin is not None:
         _set("dredepartmentadmin", 1 if body.dredepartmentadmin else 0)
+    if body.supplier_docs_manager is not None:
+        _set("supplier_docs_manager", body.supplier_docs_manager)
+    if body.supplier_docs_auditor is not None:
+        _set("supplier_docs_auditor", body.supplier_docs_auditor)
     if body.password:
         _set("password", hash_password(body.password))
 
@@ -1547,7 +1565,7 @@ async def update_user_mgmt(
             "RETURNING id, uuid::text, name, email, login, jobtitle, "
             "departmentid, superiorid, active, role, sso_manager, sso_auditor, "
             "procure_manager, sso_limpeza, sso_guarita, dreadmin, dredepartmentadmin, "
-            "createdat::text"
+            "supplier_docs_manager, supplier_docs_auditor, createdat::text"
         ),
         fields,
     )
@@ -1607,6 +1625,8 @@ async def update_user_mgmt(
         sso_guarita=bool(u.sso_guarita),
         dreadmin=bool(u.dreadmin),
         dredepartmentadmin=bool(u.dredepartmentadmin),
+        supplier_docs_manager=bool(u.supplier_docs_manager),
+        supplier_docs_auditor=bool(u.supplier_docs_auditor),
         override_role=override_row.role if override_row else None,
         created_at=u.createdat,
         cpf=p.cpf if p else None,

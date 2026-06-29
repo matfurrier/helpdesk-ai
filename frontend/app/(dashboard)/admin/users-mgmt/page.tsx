@@ -26,6 +26,8 @@ interface UserMgmt {
   sso_guarita: boolean;
   dreadmin: boolean;
   dredepartmentadmin: boolean;
+  supplier_docs_manager: boolean;
+  supplier_docs_auditor: boolean;
   override_role: string | null;
   created_at: string | null;
   cpf: string | null;
@@ -61,6 +63,8 @@ function UserDialog({
   const [ssoGuarita, setSsoGuarita] = useState(false);
   const [dreadmin, setDreadmin] = useState(false);
   const [dredeptadmin, setDredeptadmin] = useState(false);
+  const [supplierDocsManager, setSupplierDocsManager] = useState(false);
+  const [supplierDocsAuditor, setSupplierDocsAuditor] = useState(false);
   const [active, setActive] = useState(true);
   const [cpf, setCpf] = useState("");
   const [rg, setRg] = useState("");
@@ -86,6 +90,8 @@ function UserDialog({
     setSsoGuarita(user?.sso_guarita ?? false);
     setDreadmin(user?.dreadmin ?? false);
     setDredeptadmin(user?.dredepartmentadmin ?? false);
+    setSupplierDocsManager(user?.supplier_docs_manager ?? false);
+    setSupplierDocsAuditor(user?.supplier_docs_auditor ?? false);
     setActive(user?.active ?? true);
     setCpf(user?.cpf ?? "");
     setRg(user?.rg ?? "");
@@ -122,6 +128,8 @@ function UserDialog({
         sso_guarita: ssoGuarita,
         dreadmin: dreadmin,
         dredepartmentadmin: dredeptadmin,
+        supplier_docs_manager: supplierDocsManager,
+        supplier_docs_auditor: supplierDocsAuditor,
         cpf: cpf.trim() || null,
         rg: rg.trim() || null,
         matricula: matricula.trim() || null,
@@ -260,8 +268,10 @@ function UserDialog({
                 ["Gerente Compras",  procureManager, setProcureManager],
                 ["SSO Limpeza",      ssoLimpeza,    setSsoLimpeza],
                 ["SSO Guarita",      ssoGuarita,    setSsoGuarita],
-                ["Admin DRE",        dreadmin,      setDreadmin],
-                ["Admin Depto. DRE", dredeptadmin,  setDredeptadmin],
+                ["Admin DRE",           dreadmin,             setDreadmin],
+                ["Admin Depto. DRE",    dredeptadmin,         setDredeptadmin],
+                ["SupplierDocs Manager",supplierDocsManager,  setSupplierDocsManager],
+                ["SupplierDocs Auditor",supplierDocsAuditor,  setSupplierDocsAuditor],
               ] as [string, boolean, (v: boolean) => void][]).map(([label, val, setter]) => (
                 <label key={label} className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
                   <input type="checkbox" checked={val} onChange={(e) => setter(e.target.checked)} className="accent-blue-500" />

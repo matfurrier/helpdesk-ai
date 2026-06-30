@@ -233,7 +233,9 @@ function UserDialog({
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500">
               <option value="">— padrão —</option>
               <option value="user">Usuário</option>
-              <option value="responsavel">Responsável</option>
+              <option value="resp">Responsável</option>
+              <option value="gerencia">Gerência</option>
+              <option value="diretor">Diretor</option>
             </select>
           </div>
 

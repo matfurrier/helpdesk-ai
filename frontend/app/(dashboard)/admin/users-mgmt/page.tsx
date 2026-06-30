@@ -71,6 +71,7 @@ function UserDialog({
   const [matricula, setMatricula] = useState("");
   const [phone, setPhone] = useState("");
   const [mobile, setMobile] = useState("");
+  const [nativeRole, setNativeRole] = useState<string>("");
   const [overrideRole, setOverrideRole] = useState<string>("");
   const [appIds, setAppIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
@@ -99,6 +100,7 @@ function UserDialog({
     setMatricula(user?.matricula ?? "");
     setPhone(user?.phone ?? "");
     setMobile(user?.mobile ?? "");
+    setNativeRole(user?.role ?? "");
     setOverrideRole(user?.override_role ?? "");
     setAppIds(user?.app_ids ?? []);
     const sup = users.find((u) => u.name === user?.superior_name);
@@ -137,6 +139,7 @@ function UserDialog({
         matricula: matricula.trim() || null,
         phone: phone.trim() || null,
         mobile: mobile.trim() || null,
+        role: nativeRole || null,
         app_ids: appIds,
       };
       if (password.trim()) payload.password = password.trim();
@@ -221,6 +224,16 @@ function UserDialog({
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500">
               <option value="">— selecione —</option>
               {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-zinc-500 mb-1">Perfil</label>
+            <select value={nativeRole} onChange={(e) => setNativeRole(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500">
+              <option value="">— padrão —</option>
+              <option value="user">Usuário</option>
+              <option value="responsavel">Responsável</option>
             </select>
           </div>
 

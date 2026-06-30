@@ -24,6 +24,7 @@ def _mime(to: list[str], subject: str, body_html: str) -> email.mime.multipart.M
 
 async def send_email(to: list[str], subject: str, body_html: str) -> bool:
     """Send an HTML email. Returns True on success, False on failure."""
+    to = [addr for addr in to if addr]  # ponytail: filtra strings vazias antes do envio
     if not settings.smtp_user or not to:
         log.warning("email.skipped", reason="no_smtp_config_or_recipients")
         return False

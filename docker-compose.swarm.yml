@@ -47,7 +47,7 @@ x-backend-env: &backend-env
   SMTP_USER: "${SMTP_USER}"
   SMTP_PASSWORD: "${SMTP_PASSWORD}"
   MAIL_FROM: "${MAIL_FROM}"
-  IT_TEAM_EMAIL: "${IT_TEAM_EMAIL}"
+  IT_TEAM_EMAIL: "${IT_TEAM_EMAIL:-ti@desangosse.com.br}"
   FRONTEND_URL: "${FRONTEND_URL}"
 
 services:

@@ -49,7 +49,8 @@ async def _process_batch(db: AsyncSession) -> int:
     rows_result = await db.execute(
         text(
             "SELECT id, payload FROM helpdesk.notification_outbox "  # noqa: S608
-            "WHERE status = 'pending' AND scheduled_for <= NOW() "
+            "WHERE (status = 'pending' OR (status = 'failed' AND attempts < 3)) "
+            "AND scheduled_for <= NOW() "
             "ORDER BY scheduled_for ASC "
             f"LIMIT {_BATCH_SIZE} "
             "FOR UPDATE SKIP LOCKED"

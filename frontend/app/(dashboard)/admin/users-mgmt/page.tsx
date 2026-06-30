@@ -71,6 +71,7 @@ function UserDialog({
   const [matricula, setMatricula] = useState("");
   const [phone, setPhone] = useState("");
   const [mobile, setMobile] = useState("");
+  const [overrideRole, setOverrideRole] = useState<string>("");
   const [appIds, setAppIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -98,6 +99,7 @@ function UserDialog({
     setMatricula(user?.matricula ?? "");
     setPhone(user?.phone ?? "");
     setMobile(user?.mobile ?? "");
+    setOverrideRole(user?.override_role ?? "");
     setAppIds(user?.app_ids ?? []);
     const sup = users.find((u) => u.name === user?.superior_name);
     setSupUuid(sup?.uuid ?? "");
@@ -150,6 +152,20 @@ function UserDialog({
         setError(err.detail ?? "Erro ao salvar");
         return;
       }
+
+      const targetUuid = user?.uuid ?? (await res.json() as { uuid: string }).uuid;
+      const prevRole = user?.override_role ?? "";
+      if (overrideRole !== prevRole) {
+        const roleRes = overrideRole
+          ? await fetch(`/api/v1/admin/roles/${targetUuid}`, { method: "POST", headers, body: JSON.stringify({ role: overrideRole }) })
+          : await fetch(`/api/v1/admin/roles/${targetUuid}`, { method: "DELETE", headers });
+        if (!roleRes.ok) {
+          const err = await roleRes.json() as { detail?: string };
+          setError(err.detail ?? "Erro ao definir papel");
+          return;
+        }
+      }
+
       onSave();
     } finally { setSaving(false); }
   }
@@ -257,6 +273,16 @@ function UserDialog({
                   className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
               </div>
             </div>
+          </div>
+
+          <div className="col-span-2">
+            <label className="block text-xs text-zinc-500 mb-1">Papel no Helpdesk</label>
+            <select value={overrideRole} onChange={(e) => setOverrideRole(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500">
+              <option value="">Usuário comum</option>
+              <option value="it_lead">Líder TI</option>
+              <option value="it_admin">Admin TI</option>
+            </select>
           </div>
 
           <div className="col-span-2 space-y-2">

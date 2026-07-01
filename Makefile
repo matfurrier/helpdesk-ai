@@ -39,12 +39,21 @@ migrate-swarm:
 	docker exec $$CONTAINER alembic upgrade head
 
 # Run migration as an ephemeral container against prod DB.
-# Requires IMAGE and DATABASE_URL to be set in the calling environment.
-# Usage: IMAGE=helpdesk-backend:prod DATABASE_URL=postgresql+asyncpg://... make migrate-prod
+# Requires IMAGE and DATABASE_URL exported in the calling shell (not passed as
+# a make var) so the credential never appears in `ps`/shell history via argv.
+# Usage: set -a && . ./.env && set +a
+#        export DATABASE_URL="postgresql+asyncpg://${INFRA_POSTGRES_USER}:${INFRA_POSTGRES_PASSWORD}@${INFRA_POSTGRES_HOST}:5432/${INFRA_POSTGRES_DB}"
+#        IMAGE=helpdesk-backend:prod make migrate-prod
 migrate-prod:
 	docker run --rm \
 	  --network data \
-	  -e DATABASE_URL="$(DATABASE_URL)" \
+	  -e DATABASE_URL \
+	  -e SECURITY_DB_HOST \
+	  -e SECURITY_DB_PORT \
+	  -e SECURITY_DB_USER \
+	  -e SECURITY_DB_PASSWORD \
+	  -e SECURITY_DB_NAME \
+	  -e SECRET_KEY \
 	  $(IMAGE) \
 	  alembic upgrade head
 

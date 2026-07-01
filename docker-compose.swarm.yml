@@ -1,21 +1,19 @@
 # Docker Swarm stack — Hetzner infra
 #
-# Prerequisites (one-time, run on infra_postgres before first deploy):
-#   CREATE ROLE helpdesk_app WITH LOGIN PASSWORD '<secret>';
-#   CREATE DATABASE helpdesk OWNER helpdesk_app;
-#   \c helpdesk
-#   CREATE EXTENSION vector;
-#   CREATE EXTENSION pgcrypto;
+# DB: helpdesk_app role / helpdesk database on infra_postgres (cutover done
+# 2026-07-01 — role, database, vector+pgcrypto extensions already provisioned,
+# data restored from helpdesk-postgres). Credentials in .env as INFRA_POSTGRES_*.
 #
 # Migration (run before each deploy that changes the schema):
-#   IMAGE=helpdesk-backend:prod DATABASE_URL=postgresql+asyncpg://helpdesk_app:<pwd>@tasks.infra_postgres:5432/helpdesk \
+#   set -a && source .env && set +a && IMAGE=helpdesk-backend:prod \
+#     DATABASE_URL="postgresql+asyncpg://${INFRA_POSTGRES_USER}:${INFRA_POSTGRES_PASSWORD}@${INFRA_POSTGRES_HOST}:5432/${INFRA_POSTGRES_DB}" \
 #     make migrate-prod
 #
 # Deploy:
 #   docker stack deploy -c docker-compose.swarm.yml helpdesk
 
 x-backend-env: &backend-env
-  DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@helpdesk-postgres:5432/${POSTGRES_DB}"
+  DATABASE_URL: "postgresql+asyncpg://${INFRA_POSTGRES_USER}:${INFRA_POSTGRES_PASSWORD}@${INFRA_POSTGRES_HOST}:5432/${INFRA_POSTGRES_DB}"
   SECURITY_DB_HOST: "${SECURITY_DB_HOST}"
   SECURITY_DB_PORT: "${SECURITY_DB_PORT:-5432}"
   SECURITY_DB_USER: "${SECURITY_DB_USER}"

@@ -6,9 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.errors import AuthError
 from app.core.security import create_access_token, decode_token
-from app.db.session import get_security_db
+from app.db.session import get_db, get_security_db
 from app.schemas.auth import LoginRequest, UserOut
 from app.services.auth.auth_service import authenticate
+from app.services.auth.role_resolver import resolve_role
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -33,8 +34,15 @@ def _cookie_name() -> str:
 async def get_current_user(
     request: Request,
     response: Response,
+    db: AsyncSession = Depends(get_db),
+    sec_db: AsyncSession = Depends(get_security_db),
 ) -> UserOut:
-    """FastAPI dependency: extract and validate the session cookie."""
+    """FastAPI dependency: extract and validate the session cookie.
+
+    Role is re-resolved from role_overrides/departmentid on every request
+    instead of trusting the JWT's role claim, so an admin grant takes
+    effect immediately instead of waiting for the user's 8h token to expire.
+    """
     cookie_name = _cookie_name()
     token = request.cookies.get(cookie_name)
     if not token:
@@ -43,12 +51,14 @@ async def get_current_user(
         payload = decode_token(token)
     except AuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    user_uuid = str(payload["sub"])
+    role = await resolve_role(user_uuid, db, sec_db)
     return UserOut(
-        user_id=str(payload["sub"]),
+        user_id=user_uuid,
         login=str(payload.get("login", "")),
         name=str(payload.get("name", "")),
         email=str(payload.get("email", "")),
-        role=str(payload.get("role", "employee")),
+        role=str(role),
     )
 
 
@@ -57,9 +67,10 @@ async def login(
     body: LoginRequest,
     request: Request,
     response: Response,
+    db: AsyncSession = Depends(get_db),
     sec_db: AsyncSession = Depends(get_security_db),
 ) -> UserOut:
-    user = await authenticate(body.credential, body.password, sec_db)
+    user = await authenticate(body.credential, body.password, sec_db, db)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

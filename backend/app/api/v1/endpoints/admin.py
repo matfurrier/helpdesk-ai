@@ -30,15 +30,13 @@ _ADMIN_ROLES = frozenset({"it_admin", "it_lead"})
 _IT_ROLES = frozenset({"it_agent", "it_lead", "it_admin"})
 
 
-async def _admin_user(request: Request, response: Response) -> UserOut:
-    user = await get_current_user(request, response)
+async def _admin_user(user: UserOut = Depends(get_current_user)) -> UserOut:
     if user.role not in _ADMIN_ROLES:
         raise ForbiddenError("Acesso restrito a administradores")
     return user
 
 
-async def _it_user(request: Request, response: Response) -> UserOut:
-    user = await get_current_user(request, response)
+async def _it_user(user: UserOut = Depends(get_current_user)) -> UserOut:
     if user.role not in _IT_ROLES:
         raise ForbiddenError("Acesso restrito a equipe de TI")
     return user

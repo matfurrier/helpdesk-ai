@@ -44,6 +44,7 @@ async def authenticate(
     credential: str,
     password: str,
     sec_db: AsyncSession,
+    db: AsyncSession,
 ) -> AuthenticatedUser | None:
     """Return an AuthenticatedUser or None on failure.
 
@@ -74,7 +75,7 @@ async def authenticate(
     # Cast to str: uuid column is native uuid type in the real DB (asyncpg returns
     # asyncpg.pgproto.UUID, not str), which lacks .lower() and breaks role_resolver.
     user_uuid: str = str(row.uuid) if row.uuid is not None else str(row.id)
-    role = await resolve_role(user_uuid, sec_db)
+    role = await resolve_role(user_uuid, db, sec_db)
 
     log.info("login.success", uuid=user_uuid, role=role)
     return AuthenticatedUser(

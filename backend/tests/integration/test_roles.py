@@ -167,7 +167,7 @@ async def test_resolve_role_uses_override(admin_client: AsyncClient) -> None:
     try:
         factory = async_sessionmaker(fresh_engine, expire_on_commit=False)
         async with factory() as session:
-            role = await resolve_role(_TARGET_UUID, session)
+            role = await resolve_role(_TARGET_UUID, session, session)
         assert role == Role.IT_LEAD
     finally:
         await fresh_engine.dispose()

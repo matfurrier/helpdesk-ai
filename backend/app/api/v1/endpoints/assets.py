@@ -32,8 +32,7 @@ log = structlog.get_logger()
 _IT_ROLES = frozenset({"it_agent", "it_lead", "it_admin"})
 
 
-async def _it_user(request: Request, response: Response) -> UserOut:
-    user = await get_current_user(request, response)
+async def _it_user(user: UserOut = Depends(get_current_user)) -> UserOut:
     if user.role not in _IT_ROLES:
         raise ForbiddenError("Acesso restrito à equipe de TI")
     return user

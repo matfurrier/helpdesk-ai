@@ -6,6 +6,11 @@ Priority chain (Sprint 2):
   2. helpdesk.role_overrides — explicit it_admin / it_lead grants.
   3. departmentid == IT_DEPARTMENT_ID (public.users) → it_agent.
   4. Default: employee.
+
+helpdesk.role_overrides lives in the helpdesk database (DATABASE_URL), not
+the shared security database (SECURITY_DB_*) — since the infra_postgres
+cutover (2026-07-01) those are two separate physical databases, so this
+needs both sessions passed in explicitly.
 """
 
 from __future__ import annotations
@@ -28,15 +33,11 @@ class Role(StrEnum):
     IT_ADMIN = "it_admin"
 
 
-async def resolve_role(user_uuid: str, sec_db: AsyncSession) -> Role:
+async def resolve_role(user_uuid: str, db: AsyncSession, sec_db: AsyncSession) -> Role:
     """Return the highest helpdesk role for *user_uuid*.
 
-    Checks role_overrides in the helpdesk DB before falling back to the
-    departmentid-based heuristic in the shared user directory.
-    sec_db is accepted for the departmentid lookup; the helpdesk lookup
-    uses a separate session derived from sec_db's engine to reach the
-    helpdesk schema.  In practice both share the same DB in dev, so we
-    reuse sec_db.
+    Checks role_overrides in the helpdesk DB (*db*) before falling back to
+    the departmentid-based heuristic in the shared user directory (*sec_db*).
     """
     # Step 1 — bootstrap override (emergency access, always wins)
     if user_uuid.lower() in settings.bootstrap_admin_uuid_set:
@@ -44,7 +45,7 @@ async def resolve_role(user_uuid: str, sec_db: AsyncSession) -> Role:
 
     # Step 2 — explicit grant in helpdesk.role_overrides
     try:
-        override_result = await sec_db.execute(
+        override_result = await db.execute(
             text(
                 "SELECT role FROM helpdesk.role_overrides "  # noqa: S608
                 "WHERE user_uuid = :uuid LIMIT 1"

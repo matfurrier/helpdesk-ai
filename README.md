@@ -15,7 +15,7 @@ O colaborador **conversa com um assistente de IA** ao invés de preencher formul
 | `it_lead` | Tudo do agente + gestão da base de conhecimento |
 | `it_admin` | Configurações globais: categorias, SLA, modelos de IA, prompts, RAG sources |
 
-Papéis derivados do banco `security` (diretório compartilhado). Sprint 2 adicionará `helpdesk.role_overrides` para desacoplar completamente.
+Papéis derivados do banco `security` (diretório compartilhado), com `helpdesk.role_overrides` (banco `helpdesk`) para grants explícitos de `it_lead`/`it_admin`. O papel é reresolvido a cada request (não fica em cache no JWT), então um grant novo vale imediatamente, sem precisar de novo login.
 
 ---
 
@@ -29,7 +29,7 @@ Papéis derivados do banco `security` (diretório compartilhado). Sprint 2 adici
 | Banco | PostgreSQL 16 + pgvector ≥ 0.7 (schemas `helpdesk`, `helpdesk_rag`) |
 | Cache / filas | Redis 7 (arq workers) |
 | Storage | MinIO — bucket `helpdesk-attachments` |
-| Antivírus | ClamAV (sidecar, scan de todos os uploads) |
+| Antivírus | ClamAV (sidecar, scan de todos os uploads; volume persistente no Swarm para as assinaturas; `CLAMAV_FAIL_OPEN` libera upload se o scanner ficar indisponível — manter `false` em produção normalmente) |
 | LLM primário | OpenAI GPT-4o-mini (configurável via env) |
 | LLM fallback | Anthropic Claude Haiku 4.5 |
 | Embeddings | text-embedding-3-small (OpenAI) — 1536 dims |
@@ -60,6 +60,8 @@ helpdesk        helpdesk-          (arq queue)
 helpdesk_rag    attachments
 security (RO)
 ```
+
+> Em produção (Swarm), `helpdesk`/`helpdesk_rag` rodam no cluster **`infra_postgres`** compartilhado (cutover em 2026-07-01), não mais num container `helpdesk-postgres` dedicado — credenciais via `INFRA_POSTGRES_*`. O banco `security` continua uma base física separada, só leitura. Em dev local o `docker-compose.yml` ainda sobe um Postgres próprio (porta 5436).
 
 Detalhes completos: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
@@ -182,7 +184,7 @@ Migrations ficam em `backend/alembic/versions/`. Dois schemas: `helpdesk` e `hel
 | Prompt injection | ≥ 10 casos, falha bloqueia merge | `make test-pi` |
 | Frontend (vitest) | 50% em utils e hooks críticos | `cd frontend && pnpm test` |
 
-O CI (GitHub Actions) roda lint → typecheck → migration → unit → prompt injection no backend, e lint → typecheck → vitest no frontend, a cada PR e push em `main`.
+O workflow de CI (GitHub Actions) foi **removido** (`.github/workflows/ci.yml`, 2026-06-30) — hoje não há verificação automática em PR/push. Rodar `make ci-local` manualmente antes de mergear para reproduzir lint → typecheck → migration → unit → prompt injection.
 
 ---
 
@@ -199,6 +201,30 @@ O CI (GitHub Actions) roda lint → typecheck → migration → unit → prompt 
 6. POST /chat/{cid}/convert → gera ticket com título, resumo, categoria e prioridade
    sugeridos por IA; status = NEW; notificação para fila do TI
 ```
+
+---
+
+## Funcionalidades
+
+### Gestão de usuários (`/admin/users-mgmt`)
+
+- CRUD completo com papel **nativo** (`user`/`responsavel`, valores derivados do diretório `security`) exibido junto do papel efetivo do helpdesk.
+- Seletor **`override_role`** no próprio diálogo — concede/revoga `it_lead`/`it_admin` direto no modal (chama a API existente `POST`/`DELETE /admin/roles/{uuid}`), sem precisar da página de papéis separada.
+- Flags `supplier_docs_manager` e `auditor` expostas no CRUD.
+- **Atribuições dinâmicas de app** — lista de `app_ids` por usuário, carregada de `/admin/applications` e sincronizada no create/patch (sem N+1 no list).
+- Seção "Documentos e Contato": CPF, RG, matrícula e telefone/celular, persistidos em `helpdesk.user_profiles` (tabela de extensão que não toca o `security.users` compartilhado). *CRUD suporta esses campos — nenhum dado real deve aparecer em prints ou exemplos deste repositório.*
+
+### Fila de tickets de TI
+
+- Toggle **"Ocultar fechados"** (`exclude_closed`) na barra de filtros do dashboard, para tirar tickets `CLOSED`/`CANCELLED` da visão padrão da fila.
+
+### Anexos
+
+- **Auto-upload ao selecionar arquivo** — o upload dispara imediatamente na seleção (com spinner), sem fila de "pendentes" à parte; simplifica o estado do formulário de ticket.
+
+### Notificações
+
+- Outbox de e-mail corrigido: endereços vazios são filtrados antes do envio SMTP (evitava falha silenciosa quando `IT_TEAM_EMAIL` não estava configurado) e linhas `failed` com menos de 3 tentativas voltam a ser reprocessadas em vez de ficar travadas para sempre.
 
 ---
 

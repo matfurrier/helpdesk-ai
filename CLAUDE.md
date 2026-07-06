@@ -1,3 +1,41 @@
+# === FABLE MODE BOOTSTRAP (paste at the TOP of every project CLAUDE.md) ===
+
+## Session bootstrap — do this before anything else, in order
+
+1. **Invoke the `fable-mode` skill now** and keep its discipline active for
+   the whole session (autonomy, verified claims, TL;DR-first, stop
+   conditions, delegation). Do not wait for it to trigger on its own.
+2. Read `LEARNINGS.md` in this repo root (create it if absent).
+3. Read `docs/adr/` index if present — decisions there are settled.
+4. Only then start the task.
+
+## Tools active in this repo
+
+- **RTK**: compress context before long sessions and after large file reads.
+  Prefer RTK-compressed summaries over re-reading big files.
+- **Ponytail** (plugin, always-on): its decision ladder IS the enforcement of
+  fable-mode §2 (Simplicity) — do not restate minimalism rules, follow the
+  ladder. Never trade away validation, error handling, security, or
+  accessibility to satisfy it. Run `/ponytail-review` on the diff before the
+  final report, and treat any `ponytail:` deferred shortcuts as open items
+  in the report (check `/ponytail-debt` at session end).
+
+## Memory — two systems, different scope
+
+- **`LEARNINGS.md`** (this file, project root): project-local lessons —
+  environment quirks, failed approaches, config gotchas specific to this repo.
+- **Auto-memory (`MEMORY.md`, global)**: cross-project facts, feedback, and
+  preferences. Don't duplicate the same fact in both — put it where its
+  scope matches.
+
+## Precedence
+
+This file > global ~/.claude/CLAUDE.md > fable-mode skill defaults.
+On conflict, the most specific wins — except **hard rules** (secrets,
+destructive ops, SAP access pattern, OPSEC), which always win.
+
+# === END BOOTSTRAP — project-specific context below ===
+
 # CLAUDE.md — convenções de desenvolvimento
 
 > Este arquivo é lido automaticamente pelo Claude Code em toda sessão. Mantém estilo, OPSEC e padrões consistentes com as demais aplicações internas.

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import io
 import uuid
-from datetime import timedelta
 
 import structlog
 from minio import Minio
@@ -53,14 +52,16 @@ async def put(data: bytes, ticket_id: str, original_name: str, mime_type: str) -
     return key
 
 
-async def presigned_url(key: str, expires_seconds: int = 900) -> str:
-    """Return a presigned GET URL valid for *expires_seconds* seconds."""
+async def get(key: str) -> bytes:
+    """Download the object stored under *key*."""
 
-    def _presign() -> str:
-        return _client().presigned_get_object(
-            settings.minio_bucket,
-            key,
-            expires=timedelta(seconds=expires_seconds),
-        )
+    # ponytail: reads the whole object into memory; uploads are capped at 10 MB.
+    def _get() -> bytes:
+        resp = _client().get_object(settings.minio_bucket, key)
+        try:
+            return resp.read()
+        finally:
+            resp.close()
+            resp.release_conn()
 
-    return await asyncio.to_thread(_presign)
+    return await asyncio.to_thread(_get)

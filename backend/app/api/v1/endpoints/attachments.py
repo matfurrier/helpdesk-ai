@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from urllib.parse import quote
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -165,11 +165,12 @@ async def download_attachment(
     attachment_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: UserOut = Depends(get_current_user),
-) -> RedirectResponse:
+) -> Response:
     await _assert_ticket_access(ticket_id, current_user, db)
     res = await db.execute(
         text(
-            "SELECT stored_key FROM helpdesk.ticket_attachments "  # noqa: S608
+            "SELECT stored_key, original_name, mime_type "  # noqa: S608
+            "FROM helpdesk.ticket_attachments "
             "WHERE id = CAST(:aid AS uuid) "
             "  AND ticket_id = CAST(:tid AS uuid) "
             "  AND scanned_status = 'clean'"
@@ -179,5 +180,10 @@ async def download_attachment(
     row = res.fetchone()
     if row is None:
         raise NotFoundError("Arquivo não encontrado")
-    url = await storage.presigned_url(str(row.stored_key))
-    return RedirectResponse(url=url, status_code=302)
+    data = await storage.get(str(row.stored_key))
+    filename = quote(str(row.original_name))
+    return Response(
+        content=data,
+        media_type=str(row.mime_type),
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )

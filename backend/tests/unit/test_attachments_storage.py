@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.services.attachments.storage import ensure_bucket, presigned_url, put
+from app.services.attachments.storage import ensure_bucket, get, put
 
 
 @pytest.mark.asyncio
@@ -42,15 +42,18 @@ async def test_put_truncates_filename_to_100_chars() -> None:
 
 
 @pytest.mark.asyncio
-async def test_presigned_url_delegates_to_client() -> None:
+async def test_get_reads_bytes_and_releases_connection() -> None:
+    resp = MagicMock()
+    resp.read = MagicMock(return_value=b"file-bytes")
     mc = MagicMock()
-    mc.presigned_get_object = MagicMock(return_value="https://minio/bucket/key?sig=abc")
+    mc.get_object = MagicMock(return_value=resp)
 
     with patch("app.services.attachments.storage._client", return_value=mc):
-        url = await presigned_url("tickets/t1/abc/file.pdf")
+        data = await get("tickets/t1/abc/file.pdf")
 
-    assert url == "https://minio/bucket/key?sig=abc"
-    mc.presigned_get_object.assert_called_once()
+    assert data == b"file-bytes"
+    resp.close.assert_called_once()
+    resp.release_conn.assert_called_once()
 
 
 @pytest.mark.asyncio

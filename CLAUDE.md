@@ -187,3 +187,15 @@ ENV=development
 - `~/apps-staging/flowsds` — fluxo multi-stage, status visual, transições controladas server-side.
 
 **Não copiar nomes próprios nem strings hard-coded** dessas apps.
+
+
+<!-- appsds:dev-local -->
+## Dev local (AppsDS)
+
+Este app é desenvolvido em `/root/AppsDS/helpdesk-ai` — o código-fonte nunca volta pro servidor. Deploy: `scripts/deploy.sh helpdesk-ai` (rodado a partir da raiz de `/root/AppsDS`) builda a imagem aqui, sincroniza só config (compose/Dockerfile/.env) e manda a imagem pro `hetzner-app-01` via `docker save | ssh | docker load`.
+
+**Bancos/cache**: o `.env` aponta pro DNS interno do Swarm (`tasks.infra_*`), que só resolve dentro do `hetzner-app-01`. Pra rodar local, use `.env.local` (git-ignorado, nunca sincronizado — já existe neste app):
+
+- Postgres (infra_postgres): `hetzner-app-01:5433`
+
+Detalhes/histórico: `/root/AppsDS/CLAUDE.md` e `/root/AppsDS/LEARNINGS.md`.

@@ -36,3 +36,5 @@ pnpm-lock.yaml
 # OS
 .DS_Store
 Thumbs.db
+
+.env.local
